@@ -159,21 +159,19 @@ internal object DesktopSourceRegistry {
     /**
      * The sources a *stream* may come from: enabled, complete, and permitted by the ceiling in
      * force.
+     *
+     * Downloads deliberately do not filter on an addon's `allowDownloads`: an explicit download
+     * request may save a stream the addon marks as streaming-only.
      */
-    private fun playbackAdapters(quality: String?, forDownload: Boolean = false): List<SourceAdapter> {
+    private fun playbackAdapters(quality: String?): List<SourceAdapter> {
         val ceiling = ceiling(quality)
-        return adapters(forDownload).filter { ceiling.permits(it.config.kind) }
+        return adapters().filter { ceiling.permits(it.config.kind) }
     }
 
-    /**
-     * For a download, minus any addon whose manifest says `allowDownloads: 0`, so the next source
-     * in line serves the file.
-     */
-    private fun adapters(forDownload: Boolean = false): List<SourceAdapter> =
+    private fun adapters(): List<SourceAdapter> =
         configs()
             .inSourceOrder()
             .filter { it.enabled && it.isComplete }
-            .filterNot { forDownload && it.kind == DesktopSourceKind.ADDON && !DesktopAddonSource.allowsDownloads(it) }
             .map { config ->
                 when (config.kind) {
                     DesktopSourceKind.ADDON -> AddonAdapter(config)
@@ -199,10 +197,10 @@ internal object DesktopSourceRegistry {
         song: Song,
         quality: String?,
         excludedSourceId: String? = null,
-        /** A download: addons that said `allowDownloads: 0` are left out, see [adapters]. */
+        /** Kept for call-site clarity; downloads no longer skip addons that set `allowDownloads: 0`. */
         forDownload: Boolean = false,
     ): Result<DesktopStream> = runCatching {
-        val available = playbackAdapters(quality, forDownload)
+        val available = playbackAdapters(quality)
         val moduleReference = DesktopModuleSource.parseTrack(song.videoId)
         val addonReference = DesktopAddonSource.parseTrack(song.videoId)
         val owned = when {

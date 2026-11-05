@@ -43,8 +43,9 @@ internal data class DesktopAddonManifest(
      */
     @SerialName("settings") val settings: List<DesktopAddonSetting> = emptyList(),
     /**
-     * `allowDownloads` — `0` keeps the addon to playback only. Absent means allowed. (Android also
-     * reads `checkValidLossless`; the desktop app deliberately does not.)
+     * `allowDownloads` — `0` marks the addon streaming-only for clients that honour it. Absent
+     * means allowed. The desktop app still permits an explicit download. (Android also reads
+     * `checkValidLossless`; the desktop app deliberately does not.)
      */
     @SerialName("allowDownloads") val allowDownloads: JsonElement? = null,
 ) {

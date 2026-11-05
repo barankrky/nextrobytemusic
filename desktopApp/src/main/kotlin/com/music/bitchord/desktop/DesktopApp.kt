@@ -6370,10 +6370,6 @@ private fun DesktopSourceSettingsRow(
                     !config.isComplete -> "Setup required"
                     config.kind.needsServer -> "Checking…"
                     else -> config.kind.detail
-                } + if (!config.allowDownloads) {
-                    " · " + DesktopStrings["source_downloads_off", "Streaming only"]
-                } else {
-                    ""
                 },
                 color = if (skippedByQuality) DesktopAccent else DesktopSecondary,
                 style = MaterialTheme.typography.bodySmall,
