@@ -211,7 +211,6 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.RectangleShape
@@ -4199,6 +4198,7 @@ private fun DesktopTopBar(
                     painter = painterResource(Res.drawable.logo_mark),
                     contentDescription = "nextrobytemusic",
                     modifier = Modifier.size(width = 28.dp, height = 18.dp),
+                    contentScale = ContentScale.Fit,
                 )
                 Spacer(Modifier.width(14.dp))
                 DesktopToolbarButton(onClick = onBack, enabled = canGoBack, size = 32.dp) {
