@@ -150,13 +150,13 @@ void pump() {
     description.cbSize = sizeof(description);
     description.lpfnWndProc = WindowProc;
     description.hInstance = GetModuleHandleW(nullptr);
-    description.lpszClassName = L"BitChordSmtcWindow";
+    description.lpszClassName = L"NextrobyteSmtcWindow";
     RegisterClassExW(&description);
 
     // Never shown. SMTC only needs a handle to hang itself off, and a visible
-    // window here would be a second BitChord in the taskbar.
+    // window here would be a second nextrobytemusic in the taskbar.
     g_window = CreateWindowExW(
-        0, L"BitChordSmtcWindow", L"BitChord", WS_OVERLAPPED,
+        0, L"NextrobyteSmtcWindow", L"nextrobytemusic", WS_OVERLAPPED,
         0, 0, 0, 0, nullptr, nullptr, description.hInstance, nullptr);
     if (g_window == nullptr) {
         g_running = false;
