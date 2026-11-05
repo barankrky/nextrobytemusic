@@ -33,8 +33,7 @@ object DesktopLocalMusic {
     internal fun roots(): List<Path> {
         val chosen = folder()
         if (chosen != null) return listOf(chosen)
-        val home = Paths.get(System.getProperty("user.home"))
-        return listOf(home.resolve("Music"), home.resolve("Downloads"))
+        return listOf(DesktopUserFolders.music, DesktopUserFolders.downloads)
     }
 
     /** The folder the listener picked, or null for all of them. */
@@ -59,7 +58,7 @@ object DesktopLocalMusic {
      * answer for it that knows about bookmarks, hidden files and network mounts.
      */
     fun chooseFolder(): Path? = runCatching {
-        val chooser = javax.swing.JFileChooser(folder()?.toFile() ?: java.io.File(System.getProperty("user.home")))
+        val chooser = javax.swing.JFileChooser(folder()?.toFile() ?: DesktopUserFolders.music.toFile())
         chooser.fileSelectionMode = javax.swing.JFileChooser.DIRECTORIES_ONLY
         chooser.dialogTitle = "Local music folder"
         if (chooser.showOpenDialog(null) != javax.swing.JFileChooser.APPROVE_OPTION) return null
