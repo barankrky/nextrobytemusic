@@ -529,7 +529,9 @@ compose.desktop {
             )
             packageName = "nextrobytemusic"
             packageVersion = nativePackageVersion
-            description = "A YouTube Music client"
+            // FileDescription on Windows: Explorer, the Start menu and Task Manager all show
+            // this as the app's name, so it has to be the product name, not a tagline.
+            description = "nextrobytemusic"
             vendor = "Baran Karakaya"
             copyright = "Copyright © 2026 Baran Karakaya"
 
