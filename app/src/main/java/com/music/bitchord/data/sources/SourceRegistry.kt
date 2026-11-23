@@ -82,7 +82,7 @@ data class SourceConfig(
 
 /**
  * The user's sources, always tried in the fixed order [SourceKind] declares:
- * their own addons first, then nextro's High-Res gateway, then JioSaavn, then
+ * their own addons first, then Nextro's High-Res gateway, then JioSaavn, then
  * YouTube Music.
  *
  * [SourceKind.YOUTUBE] is seeded on first run and cannot be deleted, only
@@ -174,7 +174,7 @@ object SourceRegistry {
                     config.kind == SourceKind.YOUTUBE && !config.enabled -> config.copy(enabled = true)
                     config.kind == SourceKind.JIOSAAVN && forceJioSaavnOff -> config.copy(enabled = false)
                     // The built-in gateway's label is part of the build, not a
-                    // manifest field. Repair the capital-N spelling older
+                    // manifest field. Repair the lowercase-n spelling older
                     // builds stored, and fill in a config that never had one —
                     // but a name the user typed is theirs and is left alone.
                     config.kind == SourceKind.NEXTRO_HIGH_RES -> config.copy(

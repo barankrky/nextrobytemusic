@@ -110,7 +110,7 @@ class DesktopPersistence {
      * The stored source list, one entry at a time.
      *
      * A single entry naming a kind this build no longer has — `HIGH_RES`,
-     * retired when the built-in became the nextro's High-Res gateway — used to
+     * retired when the built-in became the Nextro's High-Res gateway — used to
      * fail a strict `List<...>` decode and take every other entry down with
      * it: the app then reported the whole store unreadable and ran on the
      * built-ins alone, hiding the user's addons and modules. Android has

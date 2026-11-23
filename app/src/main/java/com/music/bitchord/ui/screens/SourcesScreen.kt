@@ -167,7 +167,7 @@ fun SourcesScreen(
             // picked up the next time this screen is opened.
             //
             // The built-in gateway is the one exception: its name is the
-            // build's ("nextro's High-Res Source"), the manifest is just the
+            // build's ("Nextro's High-Res Source"), the manifest is just the
             // host it happens to point at, and letting that name win is how a
             // stored row came back spelled the gateway's way after the app had
             // already fixed it.

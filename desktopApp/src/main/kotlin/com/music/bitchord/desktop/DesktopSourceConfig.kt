@@ -36,7 +36,7 @@ internal enum class DesktopSourceKind(
     ),
 
     /**
-     * nextro's High-Res: the gateway addon this build ships pointed at. The phone's
+     * Nextro's High-Res: the gateway addon this build ships pointed at. The phone's
      * `SourceKind.NEXTRO_HIGH_RES` is the same source over the same addon protocol.
      */
     NEXTRO_HIGH_RES(

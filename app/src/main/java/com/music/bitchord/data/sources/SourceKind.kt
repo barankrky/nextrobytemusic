@@ -101,7 +101,7 @@ enum class SourceKind(
     ),
 
     /**
-     * nextro's High-Res: the gateway addon this build ships pointed at.
+     * Nextro's High-Res: the gateway addon this build ships pointed at.
      *
      * An addon in every way that matters — the app talks to it through the
      * same `/manifest.json` → `/search` → `/stream` protocol as one the user

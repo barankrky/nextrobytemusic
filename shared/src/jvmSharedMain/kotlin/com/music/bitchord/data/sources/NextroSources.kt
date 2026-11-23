@@ -18,16 +18,16 @@ object NextroSources {
     const val HIGH_RES_URL = "https://addon.krkyhost.info"
 
     /** What the row is called, overriding the name the gateway's manifest publishes. */
-    const val HIGH_RES_LABEL = "nextro's High-Res Source"
+    const val HIGH_RES_LABEL = "Nextro's High-Res Source"
 
     /**
-     * The spelling shipped by earlier builds, with a capital N.
+     * The spelling shipped by earlier builds, with a lowercase n.
      *
      * Kept only so stored configs can be repaired: the built-in is a proper
      * name and the gateway's own manifest must not rename it. A label the user
      * typed is never in this set and is therefore never touched.
      */
-    const val LEGACY_HIGH_RES_LABEL = "Nextro's High-Res Source"
+    const val LEGACY_HIGH_RES_LABEL = "nextro's High-Res Source"
 
     /** Stable id for the seeded desktop config; the phone generates one like any other source. */
     const val HIGH_RES_ID = "nextro-high-res"
