@@ -1137,6 +1137,10 @@
     <string name="pipeline_output_device">Çıkış Cihazı</string>
 
     <string name="pipeline_source">Kaynak</string>
+    <string name="pipeline_provider">Sağlayıcı</string>
+    <string name="pipeline_status_cached">Önbellekli</string>
+    <string name="pipeline_status_streaming">Akışta</string>
+    <string name="pipeline_status_local">Yerel</string>
 
     <string name="pipeline_format">Biçim</string>
 

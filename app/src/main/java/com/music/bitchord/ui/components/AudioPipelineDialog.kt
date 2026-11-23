@@ -259,6 +259,16 @@ fun AudioPipelineDialog(
                 ?: "—"
             val bitrate = nerdStats?.bitrateKbps?.let { "$it kbps" } ?: "—"
             val pcmDataRate = nerdStats?.pcmDataRateKbps?.let { "$it kbps" } ?: "—"
+            val provider = nerdStats?.provider ?: "—"
+            val playbackStatus = when (nerdStats?.playbackStatus) {
+                com.music.bitchord.data.sources.PipelinePlaybackStatus.CACHED ->
+                    stringResource(R.string.pipeline_status_cached)
+                com.music.bitchord.data.sources.PipelinePlaybackStatus.STREAMING ->
+                    stringResource(R.string.pipeline_status_streaming)
+                com.music.bitchord.data.sources.PipelinePlaybackStatus.LOCAL ->
+                    stringResource(R.string.pipeline_status_local)
+                null -> "—"
+            }
             val channels = when (nerdStats?.channels) {
                 1 -> stringResource(R.string.mono)
                 2 -> stringResource(R.string.stereo)
@@ -276,6 +286,8 @@ fun AudioPipelineDialog(
                 onStageIconPositioned = onStageIconPositioned,
             ) {
                 PipelineRow(stringResource(R.string.pipeline_source), sourceName)
+                PipelineRow(stringResource(R.string.pipeline_provider), provider)
+                PipelineRow(stringResource(R.string.status), playbackStatus)
                 PipelineRow(stringResource(R.string.pipeline_format), format)
                 PipelineRow(stringResource(R.string.pipeline_bit_depth), bitDepth)
                 PipelineRow(stringResource(R.string.pipeline_sample_rate), sampleRate)

@@ -1159,6 +1159,10 @@
     <string name="pipeline_output_device">Output Device</string>
 
     <string name="pipeline_source">Source</string>
+    <string name="pipeline_provider">提供方</string>
+    <string name="pipeline_status_cached">已缓存</string>
+    <string name="pipeline_status_streaming">流媒体播放</string>
+    <string name="pipeline_status_local">本地</string>
 
     <string name="pipeline_format">Format</string>
 

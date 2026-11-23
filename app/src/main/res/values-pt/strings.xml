@@ -1185,6 +1185,10 @@
     <string name="pipeline_output_device">Output Device</string>
 
     <string name="pipeline_source">Source</string>
+    <string name="pipeline_provider">Provedor</string>
+    <string name="pipeline_status_cached">Em cache</string>
+    <string name="pipeline_status_streaming">Em streaming</string>
+    <string name="pipeline_status_local">Local</string>
 
     <string name="pipeline_format">Format</string>
 

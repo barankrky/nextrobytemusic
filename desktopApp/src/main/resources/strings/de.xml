@@ -686,4 +686,8 @@
     <string name="listen_together_open">Gemeinsam hören</string>
     <string name="listen_together_open_count">Gemeinsam hören · %1$d</string>
     <string name="miscellaneous_footer">Wenn aktiviert, stoppt das Schließen der App aus den letzten Apps auch die Musikwiedergabe.</string>
+    <string name="pipeline_provider">Anbieter</string>
+    <string name="pipeline_status_cached">Zwischengespeichert</string>
+    <string name="pipeline_status_streaming">Streaming</string>
+    <string name="pipeline_status_local">Lokal</string>
 </resources>

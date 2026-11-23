@@ -672,4 +672,8 @@
     <string name="miscellaneous_footer">啟用後，從最近任務介面關閉應用也會停止音樂播放。</string>
     <string name="lyrics_original_title">用原標題搜歌詞</string>
     <string name="lyrics_original_title_desc">先還原 YouTube 原標題再搜歌詞，翻譯過的標題也能找到</string>
+    <string name="pipeline_provider">提供者</string>
+    <string name="pipeline_status_cached">已快取</string>
+    <string name="pipeline_status_streaming">串流中</string>
+    <string name="pipeline_status_local">本機</string>
 </resources>

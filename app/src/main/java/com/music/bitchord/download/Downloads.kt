@@ -12,6 +12,7 @@ import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.DownloadQuality
 import com.music.bitchord.data.sources.SourceResolver
+import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.data.sources.SourceStream
 import com.music.bitchord.data.sources.StreamFormat
 import com.music.bitchord.data.sources.TrackMatcher
@@ -109,7 +110,29 @@ object Downloads {
     /** videoId to the uri of the file saved for it. */
     val saved: StateFlow<Map<String, String>> = _saved.asStateFlow()
 
+    /**
+     * Whether a download record names [videoId], without touching the disk.
+     *
+     * The pipeline asks this on the main thread while a track is playing; the
+     * record's URI is not verified here because the question is only "was this
+     * saved rather than imported", and [savedUri] remains the path that
+     * guarantees the file is still there.
+     */
+    internal fun hasSavedFileRecord(videoId: String?): Boolean =
+        videoId != null && _saved.value.containsKey(videoId)
+
     private val _savedMetadata = MutableStateFlow<Map<String, SavedSongMetadata>>(emptyMap())
+
+    /**
+     * The saved record for [videoId], when this track was downloaded here.
+     *
+     * In-memory intentionally: the pipeline readout asks this on the main
+     * thread while a track is playing, and the map is already the source of
+     * truth [getDownloadedSongs] was built from. Null means either not
+     * downloaded or an entry written before downloads carried provenance.
+     */
+    internal fun savedMetadata(videoId: String?): SavedSongMetadata? =
+        videoId?.let { _savedMetadata.value[it] }
 
     private val _collections = MutableStateFlow<Map<String, SavedCollection>>(emptyMap())
 
@@ -538,6 +561,9 @@ object Downloads {
         uri: Uri,
         downloadFormat: String? = null,
         artworkUri: String? = null,
+        sourceName: String? = null,
+        provider: String? = null,
+        sourceConfigId: String? = null,
     ) {
         val ids = setOf(asked.videoId, fetched.videoId)
         // MediaStore supplies this for exported downloads, but app-private and
@@ -576,6 +602,9 @@ object Downloads {
             uri = uri.toString(),
             downloadFormat = downloadFormat,
             dateAddedSeconds = dateAddedSeconds,
+            sourceName = sourceName,
+            provider = provider,
+            sourceConfigId = sourceConfigId,
         )
         val metaFetched = SavedSongMetadata(
             videoId = fetched.videoId,
@@ -587,6 +616,9 @@ object Downloads {
             uri = uri.toString(),
             downloadFormat = downloadFormat,
             dateAddedSeconds = dateAddedSeconds,
+            sourceName = sourceName,
+            provider = provider,
+            sourceConfigId = sourceConfigId,
         )
         record(
             saved = { it + ids.associateWith { id -> uri.toString() } },
@@ -934,7 +966,16 @@ object Downloads {
         // Already there from a previous run the record lost track of — adopt it
         // rather than writing a second copy beside it.
         plan.alreadyAt?.let { uri ->
-            remember(song, track, uri)
+            // A file found before any route was resolved: its own record is
+            // the only provenance there is, so keep it rather than writing
+            // nulls over a download that already knows its source.
+            val existing = savedMetadata(song.videoId) ?: savedMetadata(track.videoId)
+            remember(
+                song, track, uri,
+                sourceName = existing?.sourceName,
+                provider = existing?.provider,
+                sourceConfigId = existing?.sourceConfigId,
+            )
             DownloadSession.done(id)
             clear(id)
             return
@@ -970,7 +1011,12 @@ object Downloads {
                 val alreadyThere = DownloadStore.existing(context, name)
                 if (alreadyThere != null) {
                     Log.d(TAG, "$name is already in Music; adopting it")
-                    remember(song, track, alreadyThere)
+                    remember(
+                        song, track, alreadyThere,
+                        sourceName = route.sourceName,
+                        provider = route.provider,
+                        sourceConfigId = route.sourceConfigId,
+                    )
                     DownloadSession.done(id)
                     clear(id)
                     return@coroutineScope
@@ -1004,7 +1050,12 @@ object Downloads {
                             artwork = artwork?.await(),
                         )
                     }
-                    remember(song, track, savedUri, route.downloadFormat)
+                    remember(
+                        song, track, savedUri, route.downloadFormat,
+                        sourceName = route.sourceName,
+                        provider = route.provider,
+                        sourceConfigId = route.sourceConfigId,
+                    )
                     DownloadSession.done(id)
                     clear(id)
                     Log.d(TAG, "saved offline ${if (manifest.dash) "DASH" else "HLS"} package for $name")
@@ -1028,7 +1079,12 @@ object Downloads {
                 val artworkUri = MediaTagger.persistArtwork(context, track.thumbnailUrl, cover)
                 val savedUri = destination.commit()
                 pending = null
-                remember(song, track, savedUri, route.downloadFormat, artworkUri)
+                remember(
+                    song, track, savedUri, route.downloadFormat, artworkUri,
+                    sourceName = route.sourceName,
+                    provider = route.provider,
+                    sourceConfigId = route.sourceConfigId,
+                )
                 DownloadSession.done(id)
                 clear(id)
                 Log.d(TAG, "saved $name")
@@ -1066,6 +1122,10 @@ object Downloads {
         val downloadFormat: String? = null,
         val taggable: Boolean = true,
         val offlineHls: Manifest? = null,
+        /** The source that supplied these bytes, for the saved record. */
+        val sourceName: String? = null,
+        val provider: String? = null,
+        val sourceConfigId: String? = null,
         val write: suspend (OutputStream, (written: Long, total: Long) -> Unit) -> Unit,
     )
 
@@ -1094,6 +1154,12 @@ object Downloads {
      */
     private suspend fun routeFor(context: Context, track: Song, quality: DownloadQuality): Route {
         fromSources(track, quality)?.let { (stream, storable) ->
+            // Read now, while the source that answered is still the one in
+            // hand: the saved record has to keep saying this after the server,
+            // the queue row and the process itself are gone.
+            val sourceName = stream.sourceConfigId?.let { SourceRegistry.config(it)?.displayName }
+            val sourceConfigId = stream.sourceConfigId
+            val provider = stream.provider
             // A manifest is an index, not audio. Whichever kind it is, fetching
             // it as a file writes the index into something named `.flac` —
             // which is exactly what a `.mpd` did until [OfflineDash] existed:
@@ -1116,6 +1182,9 @@ object Downloads {
                     mimeType = storable.mimeType,
                     describe = "${stream.format.summary} (assembled from ${if (dash) "DASH" else "HLS"})",
                     downloadFormat = stream.format.downloadBadge(),
+                    sourceName = sourceName,
+                    provider = provider,
+                    sourceConfigId = sourceConfigId,
                     write = { sink, onProgress ->
                         ManifestFile.write(
                             context.cacheDir, stream.url, stream.headers, dash,
@@ -1138,6 +1207,9 @@ object Downloads {
                 downloadFormat = stream.format.downloadBadge(),
                 taggable = true,
                 offlineHls = Manifest(stream.url, stream.headers, dash = dash).takeIf { packaged },
+                sourceName = sourceName,
+                provider = provider,
+                sourceConfigId = sourceConfigId,
                 write = { sink, onProgress ->
                     Downloader.fetchDirect(stream.url, stream.headers, sink, onProgress)
                 },
@@ -1153,6 +1225,7 @@ object Downloads {
             mimeType = stream.downloadMimeType,
             describe = "${stream.kbps}kbps ${stream.mimeType}",
             downloadFormat = youtubeDownloadBadge(stream.downloadExtension, stream.kbps),
+            sourceName = "YouTube",
             write = { sink, onProgress ->
                 Downloader.fetch(track.videoId, stream, quality.maxKbps, requireM4a, sink, onProgress)
             },
@@ -1344,6 +1417,17 @@ internal data class SavedSongMetadata(
     val downloadFormat: String? = null,
     /** Stable creation time for downloads that MediaStore does not index. */
     val dateAddedSeconds: Long? = null,
+    /**
+     * Which source supplied the saved bytes, as it was named when the download
+     * ran. Kept because a downloaded file outlives the server and the queue
+     * row it came from; without this a FLAC from the gateway reads as the
+     * listener's own import the next time it is played.
+     */
+    val sourceName: String? = null,
+    /** Which upstream behind that source answered, lower case. */
+    val provider: String? = null,
+    /** The configured source's id, when one supplied the file. */
+    val sourceConfigId: String? = null,
 )
 
 /**

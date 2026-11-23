@@ -139,8 +139,23 @@ internal data class DesktopSourceConfig(
 }
 
 /**
- * The walk order: by kind rank, and within a rank by the order the list is stored in, which is the
- * order the user added or arranged them in.
+ * The source list normalized for storage: built-ins fixed up, user choices kept.
+ *
+ * The gateway's label is the build's, not the manifest's and not an older
+ * spelling of the same thing. `normalizeHighResLabel` repairs only blank and
+ * the capital-N legacy spelling, so a name the listener typed survives.
+ */
+internal fun DesktopSourceConfig.normalizedForStorage(): DesktopSourceConfig = when {
+    kind == DesktopSourceKind.YOUTUBE && !enabled -> copy(enabled = true)
+    kind == DesktopSourceKind.NEXTRO_HIGH_RES -> copy(
+        baseUrl = baseUrl.ifBlank { NextroSources.HIGH_RES_URL },
+        label = NextroSources.normalizeHighResLabel(label),
+    )
+    else -> this
+}
+
+/** The walk order: by kind rank, and within a rank by the order the list is stored in, which is the
+ *  order the user added or arranged them in.
  */
 internal fun List<DesktopSourceConfig>.inSourceOrder(): List<DesktopSourceConfig> =
     sortedBy { it.kind.rank }

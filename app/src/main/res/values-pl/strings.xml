@@ -1220,6 +1220,10 @@
     <string name="pipeline_output_device">Output Device</string>
 
     <string name="pipeline_source">Source</string>
+    <string name="pipeline_provider">Dostawca</string>
+    <string name="pipeline_status_cached">W pamięci podręcznej</string>
+    <string name="pipeline_status_streaming">Przesyłanie strumieniowe</string>
+    <string name="pipeline_status_local">Lokalnie</string>
 
     <string name="pipeline_format">Format</string>
 

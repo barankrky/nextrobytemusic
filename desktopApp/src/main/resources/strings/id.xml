@@ -668,4 +668,8 @@
     <string name="listen_together_open">Dengar bersama</string>
     <string name="listen_together_open_count">Mendengar bersama · %1$d</string>
     <string name="miscellaneous_footer">Jika diaktifkan, menutup aplikasi dari layar aplikasi terbaru juga akan menghentikan pemutaran musik.</string>
+    <string name="pipeline_provider">Penyedia</string>
+    <string name="pipeline_status_cached">Di cache</string>
+    <string name="pipeline_status_streaming">Streaming</string>
+    <string name="pipeline_status_local">Lokal</string>
 </resources>

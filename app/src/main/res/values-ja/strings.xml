@@ -1160,6 +1160,10 @@
     <string name="pipeline_output_device">Output Device</string>
 
     <string name="pipeline_source">Source</string>
+    <string name="pipeline_provider">プロバイダー</string>
+    <string name="pipeline_status_cached">キャッシュ済み</string>
+    <string name="pipeline_status_streaming">ストリーミング</string>
+    <string name="pipeline_status_local">ローカル</string>
 
     <string name="pipeline_format">Format</string>
 

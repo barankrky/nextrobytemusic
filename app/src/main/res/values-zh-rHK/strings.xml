@@ -1159,6 +1159,10 @@
     <string name="pipeline_output_device">Output Device</string>
 
     <string name="pipeline_source">Source</string>
+    <string name="pipeline_provider">提供者</string>
+    <string name="pipeline_status_cached">已快取</string>
+    <string name="pipeline_status_streaming">串流中</string>
+    <string name="pipeline_status_local">本機</string>
 
     <string name="pipeline_format">Format</string>
 

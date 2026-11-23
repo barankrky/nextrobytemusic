@@ -126,6 +126,36 @@ class DesktopAudioCacheTest {
     }
 
     @Test
+    fun `provenance is persisted beside the rendition and follows the pointer`() {
+        val store = store()
+        val canonical = "addon:gateway:track-7|LOSSLESS|stereo"
+        val rendition = "$canonical|gateway|FLAC|24-bit|96 kHz|/a.flac"
+        val entry = store.entryFor(rendition, canonicalKey = canonical)
+        entry.recordProvenance(DesktopCacheProvenance(sourceId = "gateway", provider = "arcod"))
+        entry.writeWindow(0, byteArrayOf(1, 2, 3, 4), totalLength = 4)
+
+        val reopened = DesktopAudioCacheStore(store.directory, windowBytes = 4) { 1_024 * 1_024 }
+        val provenance = assertNotNull(reopened.provenance(canonical))
+        assertEquals("gateway", provenance.sourceId)
+        assertEquals("arcod", provenance.provider)
+    }
+
+    @Test
+    fun `the pointer moves provenance with the rendition it chooses`() {
+        val store = store()
+        val canonical = "addon:gateway:track-8|LOSSLESS|stereo"
+        val cd = store.entryFor("$canonical|gateway|FLAC|44.1 kHz|/a.flac", canonicalKey = canonical)
+        cd.recordProvenance(DesktopCacheProvenance("gateway", "arcod"))
+        cd.writeWindow(0, byteArrayOf(1, 2, 3, 4), totalLength = 4)
+
+        val hiRes = store.entryFor("$canonical|gateway|FLAC|96 kHz|/b.flac", canonicalKey = canonical)
+        hiRes.recordProvenance(DesktopCacheProvenance("gateway", "monochrome"))
+        hiRes.writeWindow(0, byteArrayOf(9, 8, 7, 6), totalLength = 4)
+
+        assertEquals("monochrome", store.provenance(canonical)?.provider)
+    }
+
+    @Test
     fun `a prefetch downloads the whole file into a playable entry`() = runBlocking {
         val body = ByteArray(90_000) { (it % 239).toByte() }
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)

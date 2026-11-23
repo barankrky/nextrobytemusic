@@ -1,6 +1,7 @@
 package com.music.bitchord.desktop
 
 import com.music.bitchord.data.model.SearchResult
+import com.music.bitchord.data.sources.AddonUpstreams
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.runBlocking
 import java.net.InetSocketAddress
@@ -94,6 +95,43 @@ class DesktopAddonServerTest {
             assertEquals("Demo Addon", detected.manifest.displayName)
         } finally {
             DesktopAddonSource.forget("addon-1")
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun `the gateway header names the upstream and a bare answer falls back to the id`() = runBlocking {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.start()
+        try {
+            val base = "http://127.0.0.1:${server.address.port}"
+            server.json("/manifest.json", """{"id":"upstreams","resources":["search","stream"]}""")
+            server.json(
+                "/search",
+                """{"tracks":[
+                  {"id":"h1","title":"Headed","artist":"A","format":"flac"},
+                  {"id":"td_42","title":"Legacy","artist":"A","format":"flac"}]}""",
+            )
+            server.jsonWithHeader(
+                "/stream/h1",
+                """{"url":"$base/h1.flac","codec":"flac"}""",
+                AddonUpstreams.HEADER,
+                "Monochrome",
+            )
+            server.json("/stream/td_42", """{"url":"$base/legacy.flac","codec":"flac"}""")
+
+            val config = DesktopSourceConfig("addon-upstreams", DesktopSourceKind.ADDON, baseUrl = base)
+            val rows = DesktopAddonSource.search(config, "upstream", 5).getOrThrow()
+                .map { (it as SearchResult.Track).song }
+            val headed = DesktopAddonSource.stream(config, rows.first { it.title == "Headed" }, "LOSSLESS")
+                .getOrThrow()
+            val legacy = DesktopAddonSource.stream(config, rows.first { it.title == "Legacy" }, "LOSSLESS")
+                .getOrThrow()
+
+            assertEquals("monochrome", headed?.provider)
+            assertEquals("monochrome", legacy?.provider)
+        } finally {
+            DesktopAddonSource.forget("addon-upstreams")
             server.stop(0)
         }
     }
@@ -279,6 +317,15 @@ class DesktopAddonServerTest {
 
     private fun HttpServer.json(path: String, body: String) {
         createContext(path) { exchange ->
+            val bytes = body.toByteArray()
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
+        }
+    }
+
+    private fun HttpServer.jsonWithHeader(path: String, body: String, header: String, value: String) {
+        createContext(path) { exchange ->
+            exchange.responseHeaders.add(header, value)
             val bytes = body.toByteArray()
             exchange.sendResponseHeaders(200, bytes.size.toLong())
             exchange.responseBody.use { it.write(bytes) }

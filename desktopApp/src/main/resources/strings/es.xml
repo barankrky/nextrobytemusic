@@ -715,4 +715,8 @@
     <string name="listen_together_open">Escuchar juntos</string>
     <string name="listen_together_open_count">Escuchando juntos · %1$d</string>
     <string name="miscellaneous_footer">Al activarlo, cerrar la app desde recientes también detiene la música.</string>
+    <string name="pipeline_provider">Proveedor</string>
+    <string name="pipeline_status_cached">En caché</string>
+    <string name="pipeline_status_streaming">En streaming</string>
+    <string name="pipeline_status_local">Local</string>
 </resources>

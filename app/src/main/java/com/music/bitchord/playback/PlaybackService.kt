@@ -107,6 +107,9 @@ import com.music.bitchord.data.model.ShelfItem
 import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.model.QueueTier
 import com.music.bitchord.data.sources.SourceRegistry
+import com.music.bitchord.data.sources.AddonUpstreams
+import com.music.bitchord.data.sources.PipelineProvenance
+import com.music.bitchord.data.sources.PipelineSourceInfo
 import com.music.bitchord.download.Downloads
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArraySet
@@ -1309,11 +1312,12 @@ class PlaybackService : MediaLibraryService() {
                 }
                 val trackParam = dataSpec.uri.getQueryParameter("t")
                 val fullMediaId = mediaIdIn(dataSpec.uri)
-                NerdStats.onSourceStream(fullMediaId ?: trackParam, stream.format, sourceName)
+                val provider = stream.provider ?: AddonUpstreams.fromTrackId(trackParam)
+                NerdStats.onSourceStream(fullMediaId ?: trackParam, stream.format, sourceName, provider)
                 if (fullMediaId != null) {
-                    NerdStats.recordSource(fullMediaId, sourceName)
+                    NerdStats.recordSource(fullMediaId, sourceName, provider)
                 }
-                NerdStats.recordSource(trackParam, sourceName)
+                NerdStats.recordSource(trackParam, sourceName, provider)
                 return@Resolver dataSpec.buildUpon()
                     .setUri(Uri.parse(stream.url))
                     .setHttpRequestHeaders(
@@ -1383,8 +1387,8 @@ class PlaybackService : MediaLibraryService() {
                 val sourceName = upgraded.sourceConfigId?.let { SourceRegistry.config(it)?.displayName }
                     ?: "Upgrade"
                 if (!proving) {
-                    NerdStats.onSourceStream(videoId, upgraded.format, sourceName)
-                    NerdStats.recordSource(videoId, sourceName)
+                    NerdStats.onSourceStream(videoId, upgraded.format, sourceName, upgraded.provider)
+                    NerdStats.recordSource(videoId, sourceName, upgraded.provider)
                 }
                 // Logged because the alternative — a swap that silently never
                 // reached its stream — is indistinguishable in the logs from
@@ -1436,9 +1440,9 @@ class PlaybackService : MediaLibraryService() {
                 val sourceName = serving.sourceConfigId?.let { SourceRegistry.config(it)?.displayName }
                     ?: if (StreamChoice.isSubstitute(videoId)) "Module" else "YouTube"
                 if (serving.format != StreamFormat()) {
-                    NerdStats.onSourceStream(videoId, serving.format, sourceName)
+                    NerdStats.onSourceStream(videoId, serving.format, sourceName, serving.provider)
                 }
-                NerdStats.recordSource(videoId, sourceName)
+                NerdStats.recordSource(videoId, sourceName, serving.provider)
                 // Read-ahead can pin JioSaavn's quick 320kbps answer before
                 // this track becomes current.  It is the right answer for an
                 // immediate start, but it is not the final quality verdict:
@@ -1508,8 +1512,8 @@ class PlaybackService : MediaLibraryService() {
                 is Resolved.Module -> {
                     val sourceName = won.stream.sourceConfigId?.let { SourceRegistry.config(it)?.displayName }
                         ?: "Module"
-                    NerdStats.onSourceStream(videoId, won.stream.format, sourceName)
-                    NerdStats.recordSource(videoId, sourceName)
+                    NerdStats.onSourceStream(videoId, won.stream.format, sourceName, won.stream.provider)
+                    NerdStats.recordSource(videoId, sourceName, won.stream.provider)
                     StreamChoice.remember(videoId, won.stream, substituted = true)
                     dataSpec.buildUpon()
                         .setUri(Uri.parse(won.stream.url))
@@ -4156,8 +4160,8 @@ class PlaybackService : MediaLibraryService() {
             )
             val upgradedSourceName = stream.sourceConfigId?.let { SourceRegistry.config(it)?.displayName }
                 ?: "Upgrade"
-            NerdStats.onSourceStream(mediaId, stream.format, upgradedSourceName)
-            NerdStats.recordSource(mediaId, upgradedSourceName)
+            NerdStats.onSourceStream(mediaId, stream.format, upgradedSourceName, stream.provider)
+            NerdStats.recordSource(mediaId, upgradedSourceName, stream.provider)
             player.seekTo(player.currentMediaItemIndex, now.position)
             player.prepare()
             QualityUpgrade.unshelve(mediaId)
@@ -4568,7 +4572,7 @@ class PlaybackService : MediaLibraryService() {
             if (previousFormat != null) {
                 val prevSource = StreamChoice.of(mediaId)?.sourceConfigId?.let { SourceRegistry.config(it)?.displayName }
                     ?: if (StreamChoice.isSubstitute(mediaId)) "Module" else "YouTube"
-                NerdStats.onSourceStream(mediaId, previousFormat, prevSource)
+                NerdStats.onSourceStream(mediaId, previousFormat, prevSource, StreamChoice.of(mediaId)?.provider)
             } else {
                 NerdStats.clearDeclared(mediaId)
             }
@@ -4953,58 +4957,64 @@ class PlaybackService : MediaLibraryService() {
         return false
     }
 
-    private fun currentSourceName(mediaId: String?, mediaItem: MediaItem?): String? {
-        val id = mediaId ?: return null
-        if (isLocalPlayback(id, mediaItem)) {
-            return "Local Storage"
-        }
-
-        // 1. Forced upgrade stream on active playback URI
+    /**
+     * The source, provider and cached/streaming state the pipeline screen
+     * states, from every record that knows one of them.
+     *
+     * The old version answered only "source name", and answered "Local
+     * Storage" for anything on disk before it looked at what had put the file
+     * there — so a downloaded FLAC from the gateway and a cached 320 both read
+     * as the listener's own import. [PipelineProvenance] holds the precedence
+     * rule now; this function's job is gathering the evidence: the download
+     * record, the cache entry's own metadata, the queue key, the live choice, and
+     * what the resolver recorded when the stream opened.
+     *
+     * Everything here is an in-memory read. The cache metadata lookup is a
+     * `SimpleCache` content-metadata read keyed directly by the URI, not a walk
+     * of the cache directory, and [Downloads] keeps its metadata in a
+     * StateFlow. `publishNerdStats` runs on the main thread.
+     */
+    private fun currentPipelineSource(mediaId: String?, mediaItem: MediaItem?): PipelineSourceInfo {
+        val id = mediaId ?: return PipelineSourceInfo(name = null)
         val uri = mediaItem?.localConfiguration?.uri
-        if (uri != null) {
-            QualityUpgrade.forcedStream(uri)?.let { upgraded ->
-                val name = upgraded.sourceConfigId?.let { SourceRegistry.config(it)?.displayName }
-                if (!name.isNullOrBlank()) return name
-            }
-        }
-
-        // 2. Exact recorded source for this media item
-        val exactRecorded = NerdStats.exactSourceFor(id)
-        if (!exactRecorded.isNullOrBlank()) return exactRecorded
-
-        // 3. Source-backed track key (e.g. src:<configId>::<trackId>)
+        val download = Downloads.savedMetadata(id)
+        val downloaded = download != null || Downloads.hasSavedFileRecord(id)
+        val local = isLocalPlayback(id, mediaItem)
         val sourceTrack = SourceRegistry.parseTrackKey(id)
-        if (sourceTrack != null) {
-            val config = SourceRegistry.config(sourceTrack.first)
-            if (config != null) return config.displayName
-            return "Unknown"
+        val cache = if (!downloaded && uri?.scheme == "nextrobytemusic") {
+            AudioCache.provenanceOf(uri)
+        } else {
+            null
         }
+        val cacheComplete = cache?.cached
+            ?: uri?.takeIf { it.scheme == "nextrobytemusic" }?.let(AudioCache::isFullyCached)
 
-        // 4. Stream substitution (e.g. YouTube substituted by addon)
-        StreamChoice.of(id)?.let { serving ->
-            val name = serving.sourceConfigId?.let { SourceRegistry.config(it)?.displayName }
-                ?: if (StreamChoice.isSubstitute(id)) "Module" else null
-            if (!name.isNullOrBlank()) return name
+        val forced = uri?.let(QualityUpgrade::forcedStream)
+        val choice = StreamChoice.of(id)
+        val configId = forced?.sourceConfigId
+            ?: choice?.sourceConfigId
+            ?: uri?.takeIf { it.authority == "source" }?.getQueryParameter("s")
+            ?: sourceTrack?.first
+        val liveName = configId?.let { SourceRegistry.config(it)?.displayName }
+        val fallbackName = when {
+            id.length == 11 || uri?.getQueryParameter("v") != null -> "YouTube"
+            else -> "Unknown"
         }
-
-        // 5. Virtual nextrobytemusic://source?s=... playback URI
-        if (uri?.authority == "source") {
-            val configId = uri.getQueryParameter("s")
-            val name = configId?.let { SourceRegistry.config(it)?.displayName }
-            if (!name.isNullOrBlank()) return name
-            return "Unknown"
-        }
-
-        // 6. Non-prefixed mediaId fallback to recorded source if any
-        val recorded = NerdStats.sourceFor(id)
-        if (!recorded.isNullOrBlank()) return recorded
-
-        // 7. YouTube video ID
-        if (id.length == 11 || uri?.getQueryParameter("v") != null) {
-            return "YouTube"
-        }
-
-        return "Unknown"
+        return PipelineProvenance.resolve(
+            mediaId = id,
+            local = local,
+            downloaded = downloaded,
+            downloadSourceName = download?.sourceName,
+            downloadProvider = download?.provider,
+            cacheSourceName = cache?.sourceName,
+            cacheProvider = cache?.provider,
+            cacheComplete = cacheComplete,
+            addonTrackId = sourceTrack?.second,
+            sourceTrackName = liveName,
+            recordedSourceName = NerdStats.sourceFor(id),
+            recordedProvider = forced?.provider ?: choice?.provider ?: NerdStats.providerFor(id),
+            fallbackSourceName = fallbackName,
+        )
     }
 
     private fun resolveLocalUri(mediaId: String, mediaItem: MediaItem?): Uri? {
@@ -5102,6 +5112,7 @@ class PlaybackService : MediaLibraryService() {
         val isLossless = dsd != null || NerdStats.isLosslessMime(format?.sampleMimeType)
         val isRawPcm = NerdStats.isRawPcm(format?.sampleMimeType)
         val pcmDataRate = measured?.pcmBitrateKbps
+        val pipelineSource = currentPipelineSource(mediaId, player.currentMediaItem)
 
         val (bitrate, provenance) = when {
             format?.averageBitrate != null && format.averageBitrate > 0 ->
@@ -5129,7 +5140,9 @@ class PlaybackService : MediaLibraryService() {
             channels = measured?.channels,
             bitDepth = if (dsd != null) 1 else if (isLossless) measured?.bitDepth else null,
             claimed = NerdStats.declaredFormat(mediaId),
-            sourceName = currentSourceName(mediaId, player.currentMediaItem),
+            sourceName = pipelineSource.name,
+            provider = pipelineSource.provider,
+            playbackStatus = pipelineSource.status,
             container = when (format?.containerMimeType) {
                 "audio/x-dsf" -> "DSF"
                 "audio/x-dff" -> "DFF"

@@ -1,7 +1,9 @@
 package com.music.bitchord.data.sources.addon
 
+import com.music.bitchord.data.sources.AddonUpstreams
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
@@ -271,6 +273,15 @@ data class AddonStream(
      * track that silently plays from YouTube instead.
      */
     @SerialName("error") val error: String? = null,
+    /**
+     * The gateway's own name for the upstream that answered, read from
+     * [AddonUpstreams.HEADER] rather than from the JSON body.
+     *
+     * Transient because it is a response header, not a field an addon puts in
+     * the document. Defaulted so every fixture and every older deployment that
+     * sends no header decodes unchanged.
+     */
+    @Transient val upstream: String? = null,
 ) {
     /** Whichever codec field the addon filled in, lowercased. */
     val statedCodec: String?

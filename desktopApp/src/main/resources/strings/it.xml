@@ -751,4 +751,8 @@
     <string name="listen_together_open">Ascolta insieme</string>
     <string name="listen_together_open_count">Ascolto insieme · %1$d</string>
     <string name="miscellaneous_footer">Quando attivo, chiudere l\'app dalla schermata delle app recenti interrompe anche la riproduzione musicale.</string>
+    <string name="pipeline_provider">Fornitore</string>
+    <string name="pipeline_status_cached">In cache</string>
+    <string name="pipeline_status_streaming">In streaming</string>
+    <string name="pipeline_status_local">Locale</string>
 </resources>

@@ -686,4 +686,8 @@
     <string name="listen_together_open">Écouter ensemble</string>
     <string name="listen_together_open_count">Écoute commune · %1$d</string>
     <string name="miscellaneous_footer">Une fois activé, fermer l\'application depuis les applications récentes arrête aussi la musique.</string>
+    <string name="pipeline_provider">Fournisseur</string>
+    <string name="pipeline_status_cached">En cache</string>
+    <string name="pipeline_status_streaming">En streaming</string>
+    <string name="pipeline_status_local">Local</string>
 </resources>

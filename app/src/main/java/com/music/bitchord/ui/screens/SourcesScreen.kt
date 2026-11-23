@@ -165,7 +165,13 @@ fun SourcesScreen(
             // equal and writes nothing, so there is no loop between this and
             // the [configs] it is reading. A rename on the addon's side is
             // picked up the next time this screen is opened.
-            if (source is AddonSource) {
+            //
+            // The built-in gateway is the one exception: its name is the
+            // build's ("nextro's High-Res Source"), the manifest is just the
+            // host it happens to point at, and letting that name win is how a
+            // stored row came back spelled the gateway's way after the app had
+            // already fixed it.
+            if (source is AddonSource && config.kind != SourceKind.NEXTRO_HIGH_RES) {
                 val named = withContext(Dispatchers.IO) { runCatching { source.manifestName() }.getOrNull() }
                 if (named != null && named != config.label) {
                     SourceRegistry.update(config.copy(label = named))

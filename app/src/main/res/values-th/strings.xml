@@ -984,6 +984,10 @@
     <string name="pipeline_output_device">Output Device</string>
 
     <string name="pipeline_source">Source</string>
+    <string name="pipeline_provider">ผู้ให้บริการ</string>
+    <string name="pipeline_status_cached">แคชแล้ว</string>
+    <string name="pipeline_status_streaming">สตรีมมิ่ง</string>
+    <string name="pipeline_status_local">ในเครื่อง</string>
 
     <string name="pipeline_format">Format</string>
 

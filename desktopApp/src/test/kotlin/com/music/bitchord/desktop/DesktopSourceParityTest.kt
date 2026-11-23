@@ -1,6 +1,7 @@
 package com.music.bitchord.desktop
 
 import com.music.bitchord.data.model.SearchResult
+import com.music.bitchord.data.sources.NextroSources
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -38,8 +39,21 @@ class DesktopSourceParityTest {
     }
 
     @Test
-    fun `source kinds follow android priority`() {
-        assertEquals(
+    fun `the gateway label is migrated without overwriting a custom name`() {
+        val legacy = DesktopSourceConfig(
+            id = NextroSources.HIGH_RES_ID,
+            kind = DesktopSourceKind.NEXTRO_HIGH_RES,
+            label = NextroSources.LEGACY_HIGH_RES_LABEL,
+            baseUrl = NextroSources.HIGH_RES_URL,
+        )
+        val custom = legacy.copy(label = "My high-res gateway")
+
+        assertEquals(NextroSources.HIGH_RES_LABEL, legacy.normalizedForStorage().label)
+        assertEquals("My high-res gateway", custom.normalizedForStorage().label)
+    }
+
+    @Test
+    fun `source kinds follow android priority`() {        assertEquals(
             listOf(
                 DesktopSourceKind.ADDON,
                 DesktopSourceKind.CUSTOM_MODULE,

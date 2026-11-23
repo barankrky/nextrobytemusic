@@ -1,6 +1,7 @@
 package com.music.bitchord.desktop
 
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.sources.AddonUpstreams
 import com.music.bitchord.data.settings.AutomixPerformanceMode
 import com.music.bitchord.data.settings.MixBlend
 import com.music.bitchord.data.settings.SmartAnalysis
@@ -240,25 +241,49 @@ class DesktopPlaybackEngine(
             // the cache stands in for a resolve that may no longer be the best answer.
             val playingFromCache = localUrl == null && cachedFile != null
             val prefetched = takePrefetched(song, excludedSourceId)
-            val resolved = localUrl?.let { Result.success(DesktopLiveResolution(DesktopStream(it))) }
-                ?: cachedFile?.let { file ->
-                    DesktopTrackLog.log("opening cached '${song.title}' from $file")
-                    Result.success(
-                        DesktopLiveResolution(
-                            DesktopStream(
-                                url = file.toAbsolutePath().toString(),
-                                sourceId = DesktopAudioCache.sourceIdFor(song),
-                            ),
+            val resolved = localUrl?.let { path ->
+                val ownFile = song.videoId.startsWith("local:")
+                val provenance = if (ownFile) null else DesktopDownloadManager.provenanceFor(song)
+                val addonTrack = DesktopAddonSource.parseTrack(song.videoId)
+                val moduleTrack = DesktopModuleSource.parseTrack(song.videoId)
+                val inferredSource = when {
+                    song.videoId.startsWith("jiosaavn:") -> "jiosaavn"
+                    song.videoId.length == 11 -> "youtube"
+                    else -> null
+                }
+                Result.success(
+                    DesktopLiveResolution(
+                        DesktopStream(
+                            url = path,
+                            sourceId = provenance?.sourceId
+                                ?: addonTrack?.sourceId
+                                ?: moduleTrack?.sourceId
+                                ?: inferredSource,
+                            provider = provenance?.provider
+                                ?: AddonUpstreams.fromTrackId(addonTrack?.trackId ?: moduleTrack?.trackId),
+                            cached = !ownFile,
+                            local = ownFile,
                         ),
-                    )
-                }
-                ?: prefetched?.let { stream ->
-                    DesktopTrackLog.log(
-                        "opening prefetched '${song.title}' from ${DesktopMusicSources.sourceNameFor(stream)}",
-                    )
-                    Result.success(DesktopLiveResolution(stream))
-                }
-                ?: DesktopMusicSources.resolveLive(song, audioQuality, excludedSourceId)
+                    ),
+                )
+            } ?: cachedFile?.let { file ->
+                DesktopTrackLog.log("opening cached '${song.title}' from $file")
+                Result.success(
+                    DesktopLiveResolution(
+                        DesktopStream(
+                            url = file.toAbsolutePath().toString(),
+                            sourceId = DesktopAudioCache.sourceIdFor(song, audioQuality),
+                            provider = DesktopAudioCache.providerFor(song, audioQuality),
+                            cached = true,
+                        ),
+                    ),
+                )
+            } ?: prefetched?.let { stream ->
+                DesktopTrackLog.log(
+                    "opening prefetched '${song.title}' from ${DesktopMusicSources.sourceNameFor(stream)}",
+                )
+                Result.success(DesktopLiveResolution(stream))
+            } ?: DesktopMusicSources.resolveLive(song, audioQuality, excludedSourceId)
             resolved.fold(
                 onSuccess = { live ->
                     val opened = openTrack(song, live.stream, startAtMs)
@@ -1786,6 +1811,10 @@ class DesktopPlaybackEngine(
         val out = sink.format
         return DesktopAudioPipeline(
             sourceFormat = track?.stream?.format,
+            sourceId = track?.stream?.sourceId,
+            provider = track?.stream?.provider,
+            cached = track?.stream?.cached,
+            local = track?.stream?.local == true,
             decoderName = track?.stream?.format?.codec,
             decodedSampleRateHz = decoded?.sampleRate,
             decodedChannels = decoded?.channels,

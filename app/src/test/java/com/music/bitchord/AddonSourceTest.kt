@@ -2,6 +2,7 @@ package com.music.bitchord
 
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.sources.AddonSource
+import com.music.bitchord.data.sources.AddonUpstreams
 import com.music.bitchord.data.sources.DeviceCodecs
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceHealth
@@ -611,6 +612,59 @@ class AddonSourceTest {
     }
 
     // ── Stream ────────────────────────────────────────────────────────────
+
+    @Test
+    fun `the gateway header names the upstream that answered`() = runBlocking {
+        route("/manifest.json", manifest())
+        route(
+            "/stream/t1",
+            json("""{"url":"https://cdn/a.flac","codec":"flac"}""")
+                .setHeader(AddonUpstreams.HEADER, "Arcod"),
+        )
+
+        val stream = AddonSource(config()).stream("t1", StreamRequest.Lossless)!!
+
+        assertEquals("arcod", stream.provider)
+        assertEquals("arcod", AddonUpstreams.displayName(stream.provider))
+    }
+
+    @Test
+    fun `without a header the track id still names the upstream`() = runBlocking {
+        route("/manifest.json", manifest())
+        route("/stream/gd_987", json("""{"url":"https://cdn/a.flac","codec":"flac"}"""))
+
+        val stream = AddonSource(config()).stream("gd_987", StreamRequest.Lossless)!!
+
+        assertEquals("netease", stream.provider)
+    }
+
+    @Test
+    fun `a bridge header is shown as lossless`() = runBlocking {
+        route("/manifest.json", manifest())
+        route(
+            "/stream/ne_1",
+            json("""{"url":"https://cdn/a.flac","codec":"flac"}""")
+                .setHeader(AddonUpstreams.HEADER, "bridge"),
+        )
+
+        val stream = AddonSource(config()).stream("ne_1", StreamRequest.Lossless)!!
+
+        assertEquals("bridge", stream.provider)
+        assertEquals("lossless", AddonUpstreams.displayName(stream.provider))
+    }
+
+    @Test
+    fun `a namespaced addon id names its own backend without a header`() = runBlocking {
+        route("/manifest.json", manifest())
+        route(
+            "/stream/emika:U2FsdGVkX19hYmM",
+            json("""{"url":"https://cdn/a.flac","codec":"flac"}"""),
+        )
+
+        val stream = AddonSource(config()).stream("emika:U2FsdGVkX19hYmM", StreamRequest.Lossless)!!
+
+        assertEquals("emika", stream.provider)
+    }
 
     @Test
     fun `the routing fields become the format the player is told about`() = runBlocking {

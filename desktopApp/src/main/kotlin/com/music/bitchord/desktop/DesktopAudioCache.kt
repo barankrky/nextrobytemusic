@@ -1,6 +1,7 @@
 package com.music.bitchord.desktop
 
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.sources.AddonUpstreams
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -15,6 +16,21 @@ import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.name
+
+/**
+ * Where a cached or downloaded file came from.
+ *
+ * Kept beside the bytes rather than on the queue row: the row can be replaced,
+ * re-matched or restored from a backup while the file on disk does not change
+ * source. [sourceId] names the configured source, [provider] the upstream
+ * behind an addon gateway.
+ */
+internal data class DesktopCacheProvenance(
+    val sourceId: String? = null,
+    val provider: String? = null,
+) {
+    val isEmpty: Boolean get() = sourceId.isNullOrBlank() && provider.isNullOrBlank()
+}
 
 /**
  * The on-disk copy of addon and module audio.
@@ -48,7 +64,6 @@ import kotlin.io.path.name
  * XML instead of the track. Manifests keep streaming exactly as before.
  */
 internal object DesktopAudioCache {
-
     /** The window granularity of a cache entry; [DesktopRangeStream] must use the same size. */
     const val WINDOW_BYTES = 512 * 1024
 
@@ -93,7 +108,10 @@ internal object DesktopAudioCache {
         // playback streaming as it did before, not fail the track that was about to play.
         return runCatching {
             store.entryFor(renditionKey(song, quality, stream), canonicalKey = key(song, quality))
-                .also { it.acquire() }
+                .also {
+                    it.recordProvenance(DesktopCacheProvenance(stream.sourceId, stream.provider))
+                    it.acquire()
+                }
         }
             .onFailure { DesktopTrackLog.log("audio cache unavailable: ${it.message}") }
             .getOrNull()
@@ -111,6 +129,7 @@ internal object DesktopAudioCache {
             stream.url,
             stream.headers,
             canonicalKey = key(song, quality),
+            provenance = DesktopCacheProvenance(stream.sourceId, stream.provider),
         )
     }
 
@@ -124,9 +143,25 @@ internal object DesktopAudioCache {
         path.toAbsolutePath().normalize().startsWith(store.directory.toAbsolutePath().normalize())
 
     /** The configured source behind [song], for a cached stream's fallback path. */
-    fun sourceIdFor(song: Song): String? =
-        DesktopAddonSource.parseTrack(song.videoId)?.sourceId
+    fun sourceIdFor(song: Song, quality: String): String? =
+        runCatching { store.provenance(key(song, quality)) }.getOrNull()?.sourceId
+            ?: DesktopAddonSource.parseTrack(song.videoId)?.sourceId
             ?: DesktopModuleSource.parseTrack(song.videoId)?.sourceId
+
+    /**
+     * The upstream behind the cached copy of [song], as recorded when its
+     * bytes were first written.
+     *
+     * The header is only in hand during `/stream`; a later play opens a local
+     * file and has no request to ask. This is what keeps the pipeline naming
+     * arcod or monochrome after a restart.
+     */
+    fun providerFor(song: Song, quality: String): String? =
+        runCatching { store.provenance(key(song, quality)) }.getOrNull()?.provider
+            ?: AddonUpstreams.fromTrackId(
+                DesktopAddonSource.parseTrack(song.videoId)?.trackId
+                    ?: DesktopModuleSource.parseTrack(song.videoId)?.trackId,
+            )
 
     /**
      * Whether [stream] is audio this cache can store.
@@ -209,6 +244,7 @@ internal class DesktopAudioCacheStore(
         private val index: Path = directory.resolve("$base.idx")
         private val lengthFile: Path = directory.resolve("$base.len")
         private val done: Path = directory.resolve("$base.done")
+        private val provenanceFile: Path = directory.resolve("$base.src")
         private val lock = Any()
         private val windows = HashSet<Long>()
         private var holders = 0
@@ -221,13 +257,52 @@ internal class DesktopAudioCacheStore(
         var complete: Boolean = false
             private set
 
+        /**
+         * Who supplied this rendition, persisted beside its bytes.
+         *
+         * A later session opens the file directly and never speaks to the
+         * source again, so this is the only record left of which gateway
+         * upstream answered — and of the source id when the queue row has been
+         * re-matched to a different one.
+         */
+        @Volatile
+        var provenance: DesktopCacheProvenance = DesktopCacheProvenance()
+            private set
+
         init {
             length = readLong(lengthFile)
             runCatching { Files.readAllLines(index) }.getOrNull().orEmpty().forEach { line ->
                 line.trim().toLongOrNull()?.let { windows += it }
             }
             complete = Files.isRegularFile(data) && Files.exists(done) && hasAllWindows()
+            provenance = readProvenance()
         }
+
+        /** Records provenance once; an existing non-empty record is not overwritten by a blank one. */
+        fun recordProvenance(value: DesktopCacheProvenance) {
+            if (value.isEmpty || value == provenance) return
+            synchronized(lock) {
+                if (value == provenance) return
+                provenance = value
+                runCatching {
+                    Files.writeString(
+                        provenanceFile,
+                        listOf(value.sourceId.orEmpty(), value.provider.orEmpty()).joinToString("\n"),
+                        StandardOpenOption.CREATE,
+                        StandardOpenOption.TRUNCATE_EXISTING,
+                        StandardOpenOption.WRITE,
+                    )
+                }
+            }
+        }
+
+        private fun readProvenance(): DesktopCacheProvenance = runCatching {
+            val lines = Files.readAllLines(provenanceFile)
+            DesktopCacheProvenance(
+                sourceId = lines.getOrNull(0)?.takeIf(String::isNotBlank),
+                provider = lines.getOrNull(1)?.takeIf(String::isNotBlank),
+            )
+        }.getOrDefault(DesktopCacheProvenance())
 
         fun acquire() {
             synchronized(lock) { holders++ }
@@ -359,7 +434,7 @@ internal class DesktopAudioCacheStore(
 
         internal fun deleteFiles(): Long {
             val bytes = runCatching { Files.size(data) }.getOrDefault(0L)
-            listOf(data, index, lengthFile, done).forEach { runCatching { Files.deleteIfExists(it) } }
+            listOf(data, index, lengthFile, done, provenanceFile).forEach { runCatching { Files.deleteIfExists(it) } }
             return bytes
         }
 
@@ -449,6 +524,13 @@ internal class DesktopAudioCacheStore(
         currentEntry(key)?.playbackFile() ?: entryFor(key).playbackFile()
 
     /**
+     * Who supplied the rendition [key] currently points at, or null when the
+     * record predates provenance or the entry does not exist.
+     */
+    fun provenance(key: String): DesktopCacheProvenance? =
+        (currentEntry(key) ?: entryFor(key)).provenance.takeIf { !it.isEmpty }
+
+    /**
      * Fetches the whole track into the cache in one pass.
      *
      * Sequential windows, not one open-ended response: a track stopped early
@@ -460,8 +542,10 @@ internal class DesktopAudioCacheStore(
         url: String,
         headers: Map<String, String>,
         canonicalKey: String? = null,
+        provenance: DesktopCacheProvenance? = null,
     ) {
         val entry = entryFor(key, canonicalKey)
+        provenance?.let(entry::recordProvenance)
         if (entry.playbackFile() != null) return
         if (!prefetching.add(key)) return
         entry.acquire()

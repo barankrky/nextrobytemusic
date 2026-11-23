@@ -426,6 +426,10 @@
     <string name="pipeline_dsp">DSP</string>
     <string name="pipeline_output_device">Output Device</string>
     <string name="pipeline_source">Source</string>
+    <string name="pipeline_provider">Provider</string>
+    <string name="pipeline_status_cached">Cached</string>
+    <string name="pipeline_status_streaming">Streaming</string>
+    <string name="pipeline_status_local">Local</string>
     <string name="pipeline_format">Format</string>
     <string name="pipeline_bit_depth">Bit Depth</string>
     <string name="pipeline_sample_rate">Sample Rate</string>

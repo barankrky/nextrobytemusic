@@ -41,6 +41,7 @@ object DesktopDownloadManager {
             val target = directory.resolve("$safeName.$extension")
             val temporary = directory.resolve(".$safeName.$extension.part")
             if (Files.isRegularFile(target) && Files.size(target) > 0L) {
+                rememberProvenance(target, stream)
                 return Result.success(song.copy(localUri = target.toUri().toString(), localPath = target.toString()))
             }
 
@@ -58,6 +59,7 @@ object DesktopDownloadManager {
                 }
                 check(Files.size(temporary) > 0L) { "Download failed: nothing was sent" }
                 Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING)
+                rememberProvenance(target, stream)
                 return Result.success(song.copy(localUri = target.toUri().toString(), localPath = target.toString()))
             }
 
@@ -107,6 +109,7 @@ object DesktopDownloadManager {
             }.getOrElse {
                 Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING)
             }
+            rememberProvenance(target, stream)
             Result.success(song.copy(localUri = target.toUri().toString(), localPath = target.toString()))
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -120,6 +123,44 @@ object DesktopDownloadManager {
     fun cancel(videoId: String) {
         activeJobs[videoId]?.cancel(CancellationException("Download cancelled"))
     }
+
+    /**
+     * Where the file saved for [song] came from, or null when the record
+     * predates provenance or the file is gone.
+     *
+     * Kept beside the audio rather than in the queue row: a download is a
+     * permanent file and the row that asked for it can be re-matched, restored
+     * or removed without the bytes changing source.
+     */
+    internal fun provenanceFor(song: Song): DesktopCacheProvenance? {
+        val target = savedFile(song) ?: return null
+        return readProvenance(target).takeIf { !it.isEmpty }
+    }
+
+    private fun rememberProvenance(target: Path, stream: DesktopStream) {
+        val provenance = DesktopCacheProvenance(stream.sourceId, stream.provider)
+        if (provenance.isEmpty) return
+        runCatching {
+            Files.writeString(
+                provenanceSidecar(target),
+                listOf(provenance.sourceId.orEmpty(), provenance.provider.orEmpty()).joinToString("\n"),
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE,
+            )
+        }
+    }
+
+    private fun readProvenance(target: Path): DesktopCacheProvenance = runCatching {
+        val lines = Files.readAllLines(provenanceSidecar(target))
+        DesktopCacheProvenance(
+            sourceId = lines.getOrNull(0)?.takeIf(String::isNotBlank),
+            provider = lines.getOrNull(1)?.takeIf(String::isNotBlank),
+        )
+    }.getOrDefault(DesktopCacheProvenance())
+
+    private fun provenanceSidecar(target: Path): Path =
+        target.resolveSibling("${target.fileName}.src")
 
     /**
      * The file saved for [song], or null when the record has outlived it.

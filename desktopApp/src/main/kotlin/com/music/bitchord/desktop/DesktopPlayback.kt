@@ -65,6 +65,12 @@ internal data class DesktopStream(
     val headers: Map<String, String> = emptyMap(),
     /** The configured source that produced this stream, for media-failure fallback. */
     val sourceId: String? = null,
+    /** Which upstream behind an addon gateway served this, lower case. */
+    val provider: String? = null,
+    /** True when the whole file is on disk — the app cache or a download. */
+    val cached: Boolean = false,
+    /** True for the listener's own file rather than a saved copy of a catalogue track. */
+    val local: Boolean = false,
     /** Whether the source says this is the immersive mix rather than a stereo one. */
     val isDolbyAtmos: Boolean = false,
     /** Explicit add-on transport (`hls` or `dash`) for extensionless manifest URLs. */

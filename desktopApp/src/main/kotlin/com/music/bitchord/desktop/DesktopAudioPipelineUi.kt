@@ -19,6 +19,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.music.bitchord.data.sources.AddonUpstreams
 
 /**
  * The signal chain behind what is playing, stage by stage: the stream that arrived, the decoder,
@@ -42,7 +43,20 @@ internal fun DesktopAudioPipelineDialog(
             )
             // The engine's own copy, so Source and Decoder cannot disagree while an upgrade lands.
             val source = pipeline.sourceFormat ?: format
-            PipelineStage(DesktopStrings["pipeline_source", "Source"]) {
+            val provider = AddonUpstreams.displayName(pipeline.provider)
+            val playbackStatus = when {
+                pipeline.local -> DesktopStrings["pipeline_status_local", "Local"]
+                pipeline.cached == true -> DesktopStrings["pipeline_status_cached", "Cached"]
+                pipeline.cached == false -> DesktopStrings["pipeline_status_streaming", "Streaming"]
+                else -> null
+            }
+            PipelineStage(DesktopStrings["pipeline_track_info", "Track Info"]) {
+                PipelineRow(
+                    DesktopStrings["pipeline_source", "Source"],
+                    sourceName ?: if (pipeline.local) "Local Storage" else null,
+                )
+                PipelineRow(DesktopStrings["pipeline_provider", "Provider"], provider)
+                PipelineRow(DesktopStrings["status", "Status"], playbackStatus)
                 PipelineRow(DesktopStrings["pipeline_format", "Format"], source?.codecLabel)
                 PipelineRow(DesktopStrings["pipeline_bitrate", "Bitrate"], source?.kbps?.let { "$it kbps" })
                 PipelineRow(
@@ -51,7 +65,6 @@ internal fun DesktopAudioPipelineDialog(
                 )
                 PipelineRow(DesktopStrings["pipeline_bit_depth", "Bit depth"], source?.bitDepth?.let { "$it-bit" })
                 PipelineRow(DesktopStrings["pipeline_channels", "Channels"], channelLabel(source?.channels))
-                PipelineRow(DesktopStrings["source", "Source"], sourceName)
             }
             PipelineStage(DesktopStrings["pipeline_decoder", "Decoder"]) {
                 PipelineRow(DesktopStrings["pipeline_decoder_name", "Decoder"], pipeline.decoderLabel)

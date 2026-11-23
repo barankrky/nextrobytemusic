@@ -718,4 +718,8 @@
     <string name="listen_together_open">Słuchajcie razem</string>
     <string name="listen_together_open_count">Wspólne słuchanie · %1$d</string>
     <string name="miscellaneous_footer">Po włączeniu, zamknięcie aplikacji z listy ostatnio używanych aplikacji zatrzyma odtwarzanie muzyki.</string>
+    <string name="pipeline_provider">Dostawca</string>
+    <string name="pipeline_status_cached">W pamięci podręcznej</string>
+    <string name="pipeline_status_streaming">Przesyłanie strumieniowe</string>
+    <string name="pipeline_status_local">Lokalnie</string>
 </resources>

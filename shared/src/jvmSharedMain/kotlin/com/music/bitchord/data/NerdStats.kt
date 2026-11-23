@@ -1,5 +1,7 @@
 package com.music.bitchord.data
 
+import com.music.bitchord.data.sources.AddonUpstreams
+import com.music.bitchord.data.sources.PipelinePlaybackStatus
 import com.music.bitchord.data.sources.SourceTrackKeys
 import com.music.bitchord.data.sources.StreamFormat
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,6 +61,10 @@ object NerdStats {
         val bitrateProvenance: TelemetryProvenance = TelemetryProvenance.UNKNOWN,
         /** True PCM throughput (sampleRate * bitDepth * channels / 1000). Never conflated with encoded bitrate. */
         val pcmDataRateKbps: Int? = null,
+        /** Which upstream behind nextro's addon gateway served the track, lower case. */
+        val provider: String? = null,
+        /** Whether the bytes in hand are cached/downloaded, still streaming, or the listener's own file. */
+        val playbackStatus: PipelinePlaybackStatus? = null,
     ) {
         /**
          * Whether what arrived is measurably worse than what was promised.
@@ -269,7 +275,10 @@ object NerdStats {
     /** Authoritative source name that supplied the stream, keyed by media/track id. */
     private val sources = ConcurrentHashMap<String, String>()
 
-    fun onStreamPicked(videoId: String, kbps: Int, source: String? = null) {
+    /** Upstream behind the addon gateway that served each track, keyed like [sources]. */
+    private val providers = ConcurrentHashMap<String, String>()
+
+    fun onStreamPicked(videoId: String, kbps: Int, source: String? = null, provider: String? = null) {
         if (kbps > 0) {
             // Enough for the queue in hand; this is a lookup, not a store.
             if (picked.size >= MAX_REMEMBERED) picked.clear()
@@ -279,10 +288,16 @@ object NerdStats {
             if (sources.size >= MAX_REMEMBERED) sources.clear()
             sources[videoId] = source
         }
+        recordProvider(videoId, provider)
     }
 
     /** Recorded as a source hands over a stream, keyed by that source's own track id. */
-    fun onSourceStream(trackId: String?, format: StreamFormat, source: String? = null) {
+    fun onSourceStream(
+        trackId: String?,
+        format: StreamFormat,
+        source: String? = null,
+        provider: String? = null,
+    ) {
         if (trackId.isNullOrBlank()) return
         if (declared.size >= MAX_REMEMBERED) declared.clear()
         declared[trackId] = format
@@ -290,20 +305,46 @@ object NerdStats {
             if (sources.size >= MAX_REMEMBERED) sources.clear()
             sources[trackId] = source
         }
+        recordProvider(trackId, provider)
     }
 
-    fun recordSource(mediaId: String?, source: String?) {
-        if (mediaId.isNullOrBlank() || source.isNullOrBlank()) return
-        if (sources.size >= MAX_REMEMBERED) sources.clear()
-        sources[mediaId] = source
+    fun recordSource(mediaId: String?, source: String?, provider: String? = null) {
+        if (mediaId.isNullOrBlank()) return
+        if (!source.isNullOrBlank()) {
+            if (sources.size >= MAX_REMEMBERED) sources.clear()
+            sources[mediaId] = source
+        }
+        recordProvider(mediaId, provider)
+    }
+
+    /**
+     * Records which upstream behind an addon served [mediaId].
+     *
+     * Stored beside [sources] rather than inside [declared] because it is not
+     * a claim about the audio — it is who supplied it, and it must survive the
+     * stream's format being dropped or replaced by an upgrade.
+     */
+    fun recordProvider(mediaId: String?, provider: String?) {
+        if (mediaId.isNullOrBlank()) return
+        val canonical = AddonUpstreams.canonical(provider) ?: return
+        if (providers.size >= MAX_REMEMBERED) providers.clear()
+        providers[mediaId] = canonical
     }
 
     fun exactSourceFor(mediaId: String?): String? = mediaId?.let { sources[it] }
+
+    fun exactProviderFor(mediaId: String?): String? = mediaId?.let { providers[it] }
 
     fun sourceFor(mediaId: String?): String? {
         val key = mediaId ?: return null
         return sources[key]
             ?: SourceTrackKeys.parse(key)?.second?.let { sources[it] }
+    }
+
+    fun providerFor(mediaId: String?): String? {
+        val key = mediaId ?: return null
+        return providers[key]
+            ?: SourceTrackKeys.parse(key)?.second?.let { providers[it] }
     }
 
     fun pickedBitrateKbps(videoId: String?): Int? = videoId?.let { picked[it] }
@@ -322,6 +363,7 @@ object NerdStats {
         if (trackId != null) {
             declared.remove(trackId)
             sources.remove(trackId)
+            providers.remove(trackId)
         }
     }
 
@@ -377,6 +419,7 @@ object NerdStats {
         picked.clear()
         declared.clear()
         sources.clear()
+        providers.clear()
     }
 
     private const val MAX_REMEMBERED = 64

@@ -736,4 +736,8 @@
     <string name="miscellaneous_footer">Etkinleştirildiğinde, uygulamayı son kullanılanlar ekranından kapatmak müzik çalmayı da durdurur.</string>
     <string name="youtube_premium_audio">YouTube Premium sesi</string>
     <string name="youtube_premium_audio_subtitle">Premium\'um var: standart 160 kbps yerine daha yüksek kaliteli ~256 kbps Opus akışı kullan</string>
+    <string name="pipeline_provider">Sağlayıcı</string>
+    <string name="pipeline_status_cached">Önbellekli</string>
+    <string name="pipeline_status_streaming">Akışta</string>
+    <string name="pipeline_status_local">Yerel</string>
 </resources>

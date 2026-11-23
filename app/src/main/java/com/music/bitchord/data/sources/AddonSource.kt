@@ -339,6 +339,9 @@ class AddonSource(
             url = url,
             format = format,
             durationSec = rows[trackId]?.durationSec,
+            // The gateway's header wins; an undeployed one sends nothing and
+            // its own track id still says which backend minted the row.
+            provider = AddonUpstreams.resolve(answer.upstream, trackId),
         )
     }
 

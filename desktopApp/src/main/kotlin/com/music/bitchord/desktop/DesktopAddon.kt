@@ -17,8 +17,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import com.music.bitchord.data.sources.AddonUpstreams
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonArray
@@ -137,6 +139,12 @@ internal data class DesktopAddonStream(
     @SerialName("audioModes") val audioModes: List<String> = emptyList(),
     /** Why there is no [url], when the addon bothered to say. */
     @SerialName("error") val error: String? = null,
+    /**
+     * The gateway's own name for the upstream that answered, from
+     * [AddonUpstreams.HEADER]. Transient: it is a response header, not a JSON
+     * field, and an older gateway sends nothing.
+     */
+    @Transient val upstream: String? = null,
 ) {
     val statedCodec: String?
         get() = (codec?.ifBlank { null } ?: fileCodec?.ifBlank { null })?.lowercase()
@@ -306,7 +314,12 @@ internal class DesktopAddonClient(rawBaseUrl: String) {
     suspend fun stream(trackId: String, tier: String): Result<DesktopAddonStream> {
         val params = settingsFor(tier)
         return streams.get(keyOf(trackId, params.toString())) {
-            fetch<DesktopAddonStream>(endpoint(listOf("stream", trackId), params))
+            runCatching {
+                val answer = body(endpoint(listOf("stream", trackId), params))
+                json.decodeFromString<DesktopAddonStream>(answer.text).copy(
+                    upstream = AddonUpstreams.canonical(answer.nextroSource),
+                )
+            }
         }
     }
 
@@ -371,10 +384,13 @@ internal class DesktopAddonClient(rawBaseUrl: String) {
     }
 
     private suspend inline fun <reified T> fetch(url: String): Result<T> =
-        runCatching { json.decodeFromString<T>(body(url)) }
+        runCatching { json.decodeFromString<T>(body(url).text) }
+
+    /** The body of a successful call, plus the upstream header when it sent one. */
+    private class Payload(val text: String, val nextroSource: String?)
 
     /** One GET, with the addon's own back-pressure honoured. */
-    private suspend fun body(url: String): String = withContext(Dispatchers.IO) {
+    private suspend fun body(url: String): Payload = withContext(Dispatchers.IO) {
         var attempt = 0
         while (true) {
             (quietUntilMs - System.currentTimeMillis()).takeIf { it > 0 }?.let { delay(it) }
@@ -385,8 +401,11 @@ internal class DesktopAddonClient(rawBaseUrl: String) {
             }
             val code = response.status.value
             val wait = when {
-                code in 200..299 -> return@withContext response.bodyAsText().takeIf { it.isNotBlank() }
-                    ?: throw DesktopAddonException("Empty response")
+                code in 200..299 -> {
+                    val text = response.bodyAsText().takeIf { it.isNotBlank() }
+                        ?: throw DesktopAddonException("Empty response")
+                    return@withContext Payload(text, response.headers[AddonUpstreams.HEADER])
+                }
                 code == 404 -> throw DesktopAddonNotFound()
                 code >= 500 -> throw DesktopAddonUnavailable("HTTP $code")
                 code != 429 -> throw DesktopAddonException("HTTP $code")
@@ -685,6 +704,7 @@ internal object DesktopAddonSource {
             url = url,
             format = formatOf(answer, url, tier),
             sourceId = config.id,
+            provider = AddonUpstreams.resolve(answer.upstream, trackId),
             isDolbyAtmos = answer.isDolbyAtmos,
             transport = answer.transport,
             durationSec = rows[rowKey(config.id, trackId)]?.durationSec,

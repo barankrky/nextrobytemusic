@@ -3,6 +3,7 @@ package com.music.bitchord.data.sources.addon
 import com.music.bitchord.data.Http
 import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.settings.AppSettings
+import com.music.bitchord.data.sources.AddonUpstreams
 import com.music.bitchord.data.sources.DeviceCodecs
 import com.music.bitchord.data.sources.module.SharedCalls
 import kotlinx.coroutines.CancellationException
@@ -158,11 +159,20 @@ class AddonClient(rawBaseUrl: String) {
      */
     suspend fun stream(trackId: String, tier: String): Result<AddonStream> {
         val params = settingsFor(tier)
+        val url = endpoint(listOf("stream", trackId), params)
         return streams.get(
             key = keyOf(trackId, params.toString()),
             describe = { "▶ addon stream(${redact(baseUrl)}) id=$trackId tier=$tier" },
         ) {
-            fetch<AddonStream>(endpoint(listOf("stream", trackId), params))
+            runCatching {
+                val answer = body(url)
+                json.decodeFromString<AddonStream>(answer.text).copy(
+                    // The header is the authority; an older gateway sends
+                    // none and the track id fallback is applied by
+                    // [AddonSource] once it knows the id it asked for.
+                    upstream = AddonUpstreams.canonical(answer.nextroSource),
+                )
+            }.onFailure { failure -> logFailure(url, failure) }
         }
     }
 
@@ -284,15 +294,19 @@ class AddonClient(rawBaseUrl: String) {
     }
 
     private suspend inline fun <reified T> fetch(url: String): Result<T> =
-        runCatching { json.decodeFromString<T>(body(url)) }
-            .onFailure { failure ->
-                if (failure is CancellationException) throw failure
-                // A miss is not worth a line. Everything else is: this is the
-                // only place that knows why an addon didn't answer.
-                if (failure !is AddonNotFound) {
-                    TrackLog.w(TAG, "  ✗ addon call failed ${redact(url)}: ${failure.message}")
-                }
-            }
+        runCatching { json.decodeFromString<T>(body(url).text) }
+            .onFailure { failure -> logFailure(url, failure) }
+
+    /** Logs a failed call; a miss is not worth a line, everything else is. */
+    private fun logFailure(url: String, failure: Throwable) {
+        if (failure is CancellationException) throw failure
+        if (failure !is AddonNotFound) {
+            TrackLog.w(TAG, "  ✗ addon call failed ${redact(url)}: ${failure.message}")
+        }
+    }
+
+    /** The body of a successful call, plus the upstream header when it sent one. */
+    private class Payload(val text: String, val nextroSource: String?)
 
     /**
      * One GET, with the addon's own back-pressure honoured.
@@ -308,8 +322,13 @@ class AddonClient(rawBaseUrl: String) {
      * protocol's way of saying this addon does not hold that recording, which
      * is precisely the miss the caller is equipped to handle and not something
      * to log as a fault.
+     *
+     * The response header travels with the body because `/stream` is the only
+     * call that uses it, and reading it here is the only place it exists:
+     * [AddonUpstreams.HEADER] names the upstream that answered, and a gateway
+     * that has not been redeployed simply sends none.
      */
-    private suspend fun body(url: String): String = withContext(Dispatchers.IO) {
+    private suspend fun body(url: String): Payload = withContext(Dispatchers.IO) {
         var attempt = 0
         while (true) {
             (quietUntilMs - System.currentTimeMillis()).takeIf { it > 0 }?.let { delay(it) }
@@ -321,9 +340,11 @@ class AddonClient(rawBaseUrl: String) {
 
             val wait = client.newCall(request).execute().use { response ->
                 when {
-                    response.isSuccessful ->
-                        return@withContext response.body?.string()?.takeIf { it.isNotBlank() }
+                    response.isSuccessful -> {
+                        val text = response.body?.string()?.takeIf { it.isNotBlank() }
                             ?: throw AddonException("Empty response")
+                        return@withContext Payload(text, response.header(AddonUpstreams.HEADER))
+                    }
                     response.code == 404 -> throw AddonNotFound()
                     // A 5xx is a server having a bad minute and will be tried
                     // again on the next track; a 4xx is this app asking for

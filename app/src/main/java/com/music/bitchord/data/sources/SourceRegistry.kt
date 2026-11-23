@@ -173,11 +173,14 @@ object SourceRegistry {
                 when {
                     config.kind == SourceKind.YOUTUBE && !config.enabled -> config.copy(enabled = true)
                     config.kind == SourceKind.JIOSAAVN && forceJioSaavnOff -> config.copy(enabled = false)
-                    config.kind == SourceKind.NEXTRO_HIGH_RES && config.baseUrl.isBlank() ->
-                        config.copy(
-                            baseUrl = NextroSources.HIGH_RES_URL,
-                            label = config.label.ifBlank { NextroSources.HIGH_RES_LABEL },
-                        )
+                    // The built-in gateway's label is part of the build, not a
+                    // manifest field. Repair the capital-N spelling older
+                    // builds stored, and fill in a config that never had one —
+                    // but a name the user typed is theirs and is left alone.
+                    config.kind == SourceKind.NEXTRO_HIGH_RES -> config.copy(
+                        baseUrl = config.baseUrl.ifBlank { NextroSources.HIGH_RES_URL },
+                        label = NextroSources.normalizeHighResLabel(config.label),
+                    )
                     else -> config
                 }
             }

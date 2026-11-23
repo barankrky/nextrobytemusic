@@ -2,6 +2,8 @@ package com.music.bitchord
 
 import android.media.AudioFormat
 import com.music.bitchord.data.NerdStats
+import com.music.bitchord.data.sources.PipelinePlaybackStatus
+import com.music.bitchord.data.sources.PipelineProvenance
 import com.music.bitchord.data.sources.StreamFormat
 import com.music.bitchord.playback.AudioOutputStatus
 import org.junit.Assert.assertEquals
@@ -301,5 +303,52 @@ class AudioPipelineTest {
 
         assertEquals("Resampler", type)
         assertEquals("Resampled", quality)
+    }
+
+    // ── Pipeline provenance ────────────────────────────────────────────────
+
+    @Test
+    fun `a cached source track keeps its real source and provider in the pipeline`() {
+        val info = PipelineProvenance.resolve(
+            mediaId = "src:gateway::ar_123",
+            local = false,
+            downloaded = false,
+            cacheSourceName = "nextro's High-Res Source",
+            cacheProvider = "arcod",
+            cacheComplete = true,
+            addonTrackId = "ar_123",
+        )
+
+        assertEquals("nextro's High-Res Source", info.name)
+        assertEquals("arcod", info.provider)
+        assertEquals(PipelinePlaybackStatus.CACHED, info.status)
+    }
+
+    @Test
+    fun `a downloaded source track is not reported as Local Storage`() {
+        val info = PipelineProvenance.resolve(
+            mediaId = "src:gateway::ne_987",
+            local = true,
+            downloaded = true,
+            downloadSourceName = "nextro's High-Res Source",
+            downloadProvider = "bridge",
+        )
+
+        assertEquals("nextro's High-Res Source", info.name)
+        // The bridge is shown under the name listeners understand.
+        assertEquals("lossless", info.provider)
+        assertEquals(PipelinePlaybackStatus.CACHED, info.status)
+    }
+
+    @Test
+    fun `the listener's own file stays Local Storage`() {
+        val info = PipelineProvenance.resolve(
+            mediaId = "content://media/external/audio/1",
+            local = true,
+            downloaded = false,
+        )
+
+        assertEquals(PipelineProvenance.LOCAL_LABEL, info.name)
+        assertEquals(PipelinePlaybackStatus.LOCAL, info.status)
     }
 }

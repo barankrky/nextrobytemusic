@@ -9,6 +9,14 @@ package com.music.bitchord.desktop
 internal data class DesktopAudioPipeline(
     /** What the engine is actually playing, which the screen's own copy can lag behind. */
     val sourceFormat: DesktopStreamFormat? = null,
+    /** The configured source that supplied the bytes in hand, when known. */
+    val sourceId: String? = null,
+    /** The upstream behind an addon gateway that answered, lower case. */
+    val provider: String? = null,
+    /** True when the whole file is on disk — a completed cache entry or a download. */
+    val cached: Boolean? = null,
+    /** True for the listener's own file; no source supplied it. */
+    val local: Boolean = false,
     val decoderName: String? = null,
     val decodedSampleRateHz: Int? = null,
     val decodedChannels: Int? = null,
@@ -29,4 +37,20 @@ internal data class DesktopAudioPipeline(
     val resampling: Boolean
         get() = decodedSampleRateHz != null && outputSampleRateHz != null &&
             decodedSampleRateHz != outputSampleRateHz
+
+    companion object {
+        /**
+         * The track-side fields from the stream the engine opened, kept here
+         * so the readout and its tests read the same answer: a cached file
+         * that came from the gateway is still the gateway's, and a download
+         * is on disk whatever source supplied it.
+         */
+        fun of(stream: DesktopStream?): DesktopAudioPipeline = DesktopAudioPipeline(
+            sourceFormat = stream?.format,
+            sourceId = stream?.sourceId,
+            provider = stream?.provider,
+            cached = stream?.cached,
+            local = stream?.local == true,
+        )
+    }
 }

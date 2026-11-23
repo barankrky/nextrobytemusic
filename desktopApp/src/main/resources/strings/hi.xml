@@ -686,4 +686,8 @@
     <string name="listen_together_open">साथ में सुनें</string>
     <string name="listen_together_open_count">साथ में सुन रहे हैं · %1$d</string>
     <string name="miscellaneous_footer">चालू होने पर, हाल के ऐप्स स्क्रीन से ऐप बंद करने पर संगीत प्लेबैक भी रुक जाएगा।</string>
+    <string name="pipeline_provider">प्रदाता</string>
+    <string name="pipeline_status_cached">कैश में</string>
+    <string name="pipeline_status_streaming">स्ट्रीमिंग</string>
+    <string name="pipeline_status_local">स्थानीय</string>
 </resources>

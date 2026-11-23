@@ -619,6 +619,36 @@ class SourcesTest {
     }
 
     @Test
+    fun `the old gateway label is migrated without touching a custom name`() {
+        val legacy = SourceConfig(
+            id = "legacy-gateway",
+            kind = SourceKind.NEXTRO_HIGH_RES,
+            baseUrl = NextroSources.HIGH_RES_URL,
+            label = NextroSources.LEGACY_HIGH_RES_LABEL,
+        )
+        val custom = SourceConfig(
+            id = "my-gateway",
+            kind = SourceKind.NEXTRO_HIGH_RES,
+            baseUrl = NextroSources.HIGH_RES_URL,
+            label = "My high-res gateway",
+        )
+        val blank = SourceConfig(
+            id = "blank-gateway",
+            kind = SourceKind.NEXTRO_HIGH_RES,
+            baseUrl = NextroSources.HIGH_RES_URL,
+        )
+
+        val migrated = SourceRegistry.sourcesForInit(
+            listOf(legacy, custom, blank),
+            forceJioSaavnOff = false,
+        )
+
+        assertEquals(NextroSources.HIGH_RES_LABEL, migrated.first { it.id == legacy.id }.label)
+        assertEquals("My high-res gateway", migrated.first { it.id == custom.id }.label)
+        assertEquals(NextroSources.HIGH_RES_LABEL, migrated.first { it.id == blank.id }.label)
+    }
+
+    @Test
     fun `the gateway cannot be deleted`() {
         val before = SourceRegistry.configs.value
         try {

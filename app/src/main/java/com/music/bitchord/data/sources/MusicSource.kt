@@ -52,6 +52,16 @@ data class SourceStream(
      * reproduces the stream already playing.
      */
     val sourceConfigId: String? = null,
+    /**
+     * Which upstream behind an addon gateway served this, lower case.
+     *
+     * Set by [AddonSource][com.music.bitchord.data.sources.AddonSource] from
+     * the gateway's own `X-Nextro-Source` header, else from its track id. It
+     * travels with the stream so the pipeline can name the provider while the
+     * stream is live and so the cache and a download can persist it before the
+     * header is no longer in hand. See [AddonUpstreams].
+     */
+    val provider: String? = null,
 )
 
 /**

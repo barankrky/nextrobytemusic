@@ -1208,6 +1208,10 @@
     <string name="pipeline_output_device">Output Device</string>
 
     <string name="pipeline_source">Source</string>
+    <string name="pipeline_provider">Провайдер</string>
+    <string name="pipeline_status_cached">В кэше</string>
+    <string name="pipeline_status_streaming">Потоковая передача</string>
+    <string name="pipeline_status_local">Локально</string>
 
     <string name="pipeline_format">Format</string>
 

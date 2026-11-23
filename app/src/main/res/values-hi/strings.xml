@@ -1180,6 +1180,10 @@
     <string name="pipeline_output_device">Output Device</string>
 
     <string name="pipeline_source">Source</string>
+    <string name="pipeline_provider">प्रदाता</string>
+    <string name="pipeline_status_cached">कैश में</string>
+    <string name="pipeline_status_streaming">स्ट्रीमिंग</string>
+    <string name="pipeline_status_local">स्थानीय</string>
 
     <string name="pipeline_format">Format</string>
 

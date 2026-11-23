@@ -1180,6 +1180,10 @@
     <string name="pipeline_output_device">Output Device</string>
 
     <string name="pipeline_source">Source</string>
+    <string name="pipeline_provider">Anbieter</string>
+    <string name="pipeline_status_cached">Zwischengespeichert</string>
+    <string name="pipeline_status_streaming">Streaming</string>
+    <string name="pipeline_status_local">Lokal</string>
 
     <string name="pipeline_format">Format</string>
 

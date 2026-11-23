@@ -5,6 +5,7 @@ import android.media.MediaDataSource
 import android.net.Uri
 import android.os.SystemClock
 import com.music.bitchord.data.TrackLog
+import com.music.bitchord.data.NerdStats
 import com.music.bitchord.playback.smart.AutomixAnalysisSource
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
@@ -22,10 +23,12 @@ import java.io.IOException
 import com.music.bitchord.data.innertube.StreamResolver
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.settings.AppSettings
+import com.music.bitchord.data.sources.AddonUpstreams
 import com.music.bitchord.data.sources.DeviceCodecs
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.data.sources.SourceRegistry
 import com.music.bitchord.data.sources.SourceResolver
+import com.music.bitchord.data.sources.SourceTrackKeys
 import com.music.bitchord.data.sources.TrackMatcher
 import com.music.bitchord.download.Downloads
 import kotlinx.coroutines.CoroutineScope
@@ -561,6 +564,46 @@ object AudioCache {
     }
 
     /**
+     * What a cache entry can say about who put its bytes there.
+     *
+     * [cached] is the entry's own state at the moment of asking, not a claim
+     * stored alongside the metadata: a prefix can be complete one minute and
+     * evicted the next, and the pipeline screen must not keep saying "Cached"
+     * over a stream that has gone back to the network.
+     */
+    data class ServedProvenance(
+        val sourceName: String?,
+        val provider: String?,
+        val sourceConfigId: String?,
+        val cached: Boolean,
+    )
+
+    /**
+     * The provenance recorded against [uri]'s cache entry, or null when this
+     * rendition has never been opened through the cache.
+     *
+     * Reads content metadata by key rather than scanning [cache]'s key set, so
+     * it is safe on the main thread. Callers should still only ask for a
+     * virtual `nextrobytemusic://` URI: a `content://` or `file://` item is
+     * not written to this cache at all.
+     */
+    fun provenanceOf(uri: Uri): ServedProvenance? {
+        if (!::cache.isInitialized) return null
+        val key = keyFactory.buildCacheKey(DataSpec(uri))
+        val meta = runCatching { cache.getContentMetadata(key) }.getOrNull() ?: return null
+        val sourceName = meta.get(META_SOURCE_NAME, null as String?)
+        val provider = meta.get(META_PROVIDER, null as String?)
+        val sourceConfigId = meta.get(META_SOURCE_ID, null as String?)
+        if (sourceName == null && provider == null && sourceConfigId == null) return null
+        return ServedProvenance(
+            sourceName = sourceName,
+            provider = provider,
+            sourceConfigId = sourceConfigId,
+            cached = isFullyCached(uri),
+        )
+    }
+
+    /**
      * Tags the cache entry [spec] is filling with who is serving it.
      *
      * Called from the player's resolving data source, the one place where the
@@ -579,7 +622,7 @@ object AudioCache {
         val mediaId = mediaIdIn(spec.uri) ?: return
         val key = spec.key ?: keyFactory.buildCacheKey(spec)
         val origin = originOf(spec.uri, mediaId, servedUrl)
-        val sourceName = sourceNameOf(spec.uri, mediaId)
+        val provenance = sourceProvenanceOf(spec.uri, mediaId)
         val song = notedSongs[mediaId]
         // Automix's analysis-only read: its own YouTube Opus download, made
         // whatever the track is actually playing from. Never playback.
@@ -593,7 +636,9 @@ object AudioCache {
             val played = has(META_PLAYED) || (!analysis && mediaId in playedIds)
             val tagged = meta.get(META_ORIGIN, null as String?) == origin.name &&
                 meta.get(META_MEDIA_ID, null as String?) == mediaId &&
-                (sourceName == null || meta.get(META_SOURCE_NAME, null as String?) == sourceName) &&
+                (provenance.sourceName == null || meta.get(META_SOURCE_NAME, null as String?) == provenance.sourceName) &&
+                (provenance.provider == null || meta.get(META_PROVIDER, null as String?) == provenance.provider) &&
+                (provenance.sourceConfigId == null || meta.get(META_SOURCE_ID, null as String?) == provenance.sourceConfigId) &&
                 has(META_PLAYBACK) == usedByPlayback &&
                 (usedByPlayback || has(META_ANALYSIS)) &&
                 has(META_PLAYED) == played
@@ -605,7 +650,9 @@ object AudioCache {
                 ContentMetadataMutations().also { mutations ->
                     mutations.set(META_ORIGIN, origin.name)
                     mutations.set(META_MEDIA_ID, mediaId)
-                    sourceName?.let { mutations.set(META_SOURCE_NAME, it) }
+                    provenance.sourceName?.let { mutations.set(META_SOURCE_NAME, it) }
+                    provenance.provider?.let { mutations.set(META_PROVIDER, it) }
+                    provenance.sourceConfigId?.let { mutations.set(META_SOURCE_ID, it) }
                     if (usedByPlayback) mutations.set(META_PLAYBACK, "1") else mutations.set(META_ANALYSIS, "1")
                     if (played) mutations.set(META_PLAYED, "1")
                     describe(mutations, song, spec.uri)
@@ -641,20 +688,40 @@ object AudioCache {
     }
 
     /**
-     * The configured source behind [servedUrl], for the Cached songs row.
+     * The configured source and upstream behind [uri], for the cache entry's
+     * own record and for the pipeline readout.
      *
-     * The same id [originOf] uses, but read for its name rather than its
-     * kind: an addon or module cache entry is worth labelling with the source
-     * that served it, and the source is what the row's second line shows.
+     * The same evidence the resolver already used, read in the order it
+     * becomes known: a forced upgrade names its source, a source-authority URI
+     * carries it, and a substituted YouTube track is named by [StreamChoice].
+     * The provider is kept separately because a gateway that serves one track
+     * through several backends cannot be inferred from the source config.
      */
-    private fun sourceNameOf(uri: Uri, mediaId: String): String? {
+    private fun sourceProvenanceOf(uri: Uri, mediaId: String): ServedProvenance {
         val upgrade = QualityUpgrade.forcedStream(uri)
+        val choice = StreamChoice.of(mediaId)
         val configId = when {
             upgrade != null -> upgrade.sourceConfigId
             uri.getQueryParameter("s") != null -> uri.getQueryParameter("s")
-            else -> StreamChoice.of(mediaId)?.sourceConfigId
+            else -> choice?.sourceConfigId
         }
-        return configId?.let { SourceRegistry.config(it)?.displayName }
+        // The resolver's own record is the actual source that answered, which
+        // can differ from the one the row was pinned to when a fallback served
+        // it. It is written immediately before this runs.
+        val sourceName = NerdStats.exactSourceFor(mediaId)
+            ?: configId?.let { SourceRegistry.config(it)?.displayName }
+            ?: NerdStats.sourceFor(mediaId)
+        val provider = upgrade?.provider
+            ?: choice?.provider
+            ?: NerdStats.exactProviderFor(mediaId)
+            ?: NerdStats.providerFor(mediaId)
+            ?: AddonUpstreams.fromTrackId(SourceTrackKeys.parse(mediaId)?.second)
+        return ServedProvenance(
+            sourceName = sourceName,
+            provider = AddonUpstreams.canonical(provider),
+            sourceConfigId = configId,
+            cached = false,
+        )
     }
 
     /** Writes what the folder shows about a track into [mutations]. */
@@ -788,6 +855,8 @@ object AudioCache {
     private const val META_ORIGIN = "bc_origin"
     private const val META_MEDIA_ID = "bc_media_id"
     private const val META_SOURCE_NAME = "bc_source_name"
+    private const val META_PROVIDER = "bc_source_provider"
+    private const val META_SOURCE_ID = "bc_source_config_id"
     private const val META_TITLE = "bc_title"
     private const val META_ARTIST = "bc_artist"
     private const val META_ALBUM = "bc_album"

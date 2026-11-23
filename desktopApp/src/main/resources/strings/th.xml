@@ -714,4 +714,8 @@
     <string name="listen_together_jam_unnamed">กำลังฟังด้วยกัน</string>
     <string name="listen_together_open">ฟังด้วยกัน</string>
     <string name="listen_together_open_count">กำลังฟังด้วยกัน · %1$d</string>
+    <string name="pipeline_provider">ผู้ให้บริการ</string>
+    <string name="pipeline_status_cached">แคชแล้ว</string>
+    <string name="pipeline_status_streaming">สตรีมมิ่ง</string>
+    <string name="pipeline_status_local">ในเครื่อง</string>
 </resources>

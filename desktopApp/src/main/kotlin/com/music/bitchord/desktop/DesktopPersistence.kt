@@ -184,17 +184,7 @@ class DesktopPersistence {
 
         // YouTube remains the non-removable catalogue fallback, matching the Android source
         // registry.
-        val normalized = withBuiltIns.map {
-            when {
-                it.kind == DesktopSourceKind.YOUTUBE && !it.enabled -> it.copy(enabled = true)
-                it.kind == DesktopSourceKind.NEXTRO_HIGH_RES && it.baseUrl.isBlank() ->
-                    it.copy(
-                        baseUrl = NextroSources.HIGH_RES_URL,
-                        label = it.label.ifBlank { NextroSources.HIGH_RES_LABEL },
-                    )
-                else -> it
-            }
-        }.inSourceOrder()
+        val normalized = withBuiltIns.map { it.normalizedForStorage() }.inSourceOrder()
         if (stored == null || normalized != stored || (DesktopPlatform.isWindows && protected == null)) {
             saveSourceConfigs(normalized)
             if (DesktopPlatform.isWindows && stored == null) {
@@ -209,7 +199,7 @@ class DesktopPersistence {
             if (config.kind == DesktopSourceKind.ADDON) {
                 config.copy(baseUrl = DesktopAddonClient.normalizeBase(config.baseUrl))
             } else {
-                config
+                config.normalizedForStorage()
             }
         }
         val raw = sourceJson.encodeToString(normalized)
