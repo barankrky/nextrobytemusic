@@ -210,6 +210,13 @@ object InnerTubeXResolver {
      * [maxKbps] only chooses between its smallest and best rungs, and
      * [requireM4a] asks for its best AAC-in-MP4.
      *
+     * [premium] says the signed-in account has YouTube Premium. For an Opus ask
+     * it takes the signed-in route instead of the anonymous direct ask, which is
+     * the only route offered Premium's ~256kbps Opus (itag 774); the anonymous
+     * one tops out at itag 251. The ask is then [AudioQuality.HIGH] — highest
+     * bitrate wins — since AUTO's scoring would settle for 251. Signed out,
+     * InnerTubeX ignores it.
+     *
      * @return a stream for [videoId], or null when every client InnerTubeX would
      *   try is refused or [skipClients] has ruled it out.
      * @throws com.metrolist.innertubex.extraction.StreamResolveException with a
@@ -220,17 +227,23 @@ object InnerTubeXResolver {
         maxKbps: Int,
         skipClients: Set<String> = emptySet(),
         requireM4a: Boolean = false,
+        premium: Boolean = false,
     ): Extracted? {
         innerTube.cookie = Innertube.cookie
         innerTube.visitorData = Innertube.ensureVisitorData()
         innerTube.locale = YouTubeLocale(gl = Innertube.currentRegion, hl = Innertube.currentLanguage)
+        // Premium's rung is ~256kbps; a ceiling under that could not keep it.
+        val premiumOpus = premium && !requireM4a && maxKbps >= PREMIUM_OPUS_KBPS
         val stream = extractor.extract(
             videoId = videoId,
-            hints = ContentHints().withStreamCapabilities(allowHls = false, allowSabr = false, allowBoundedRange = true),
+            hints = ContentHints()
+                .withPremium(premiumOpus)
+                .withStreamCapabilities(allowHls = false, allowSabr = false, allowBoundedRange = true),
             excludedClients = excludedFor(videoId) + skipClients,
             audioQuality = when {
                 requireM4a -> AudioQuality.MP4
                 maxKbps <= LOW_KBPS -> AudioQuality.LOW
+                premiumOpus -> AudioQuality.HIGH
                 else -> AudioQuality.AUTO
             },
             clientPlaybackNonce = generateClientPlaybackNonce(),
@@ -290,6 +303,8 @@ object InnerTubeXResolver {
     private const val PLAYER_CONFIG_URL =
         "https://raw.githubusercontent.com/ZemerTeam/zemer-cipher/master/library/src/main/assets/player_configs.json"
     private const val LOW_KBPS = 64
+    /** Itag 774, Premium's Opus rung. */
+    private const val PREMIUM_OPUS_KBPS = 256
     private const val EXCLUDE_MS = 10 * 60 * 1000L
     private const val MAX_REMEMBERED = 64
     /** Off the cold-start path; the first tap on a track is rarely sooner. */

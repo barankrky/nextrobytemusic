@@ -12,7 +12,19 @@ internal class DesktopRangeStream(
     private val url: String,
     private val headers: Map<String, String> = emptyMap(),
     private val windowBytes: Int = DEFAULT_WINDOW,
+    /**
+     * The on-disk window map this reader fills as it goes, when the stream is
+     * one [DesktopAudioCache] keeps. A window that is already there costs no
+     * request; a missing one is fetched and written in the same pass.
+     */
+    private val cache: DesktopAudioCacheStore.Entry? = null,
 ) {
+
+    init {
+        require(cache == null || cache.windowBytes == windowBytes) {
+            "the cache window is ${cache?.windowBytes} bytes, not $windowBytes"
+        }
+    }
 
     /** Total length in bytes, or -1 until the first response has stated one. */
     var length: Long = -1L
@@ -51,22 +63,45 @@ internal class DesktopRangeStream(
     private fun holds(at: Long): Boolean =
         windowStart >= 0 && at >= windowStart && at < windowStart + window.size
 
-    /** Fetches the window containing [at]. */
+    /** Fetches the window containing [at], or serves it from the cache. */
     private fun fetchWindowFor(at: Long): Boolean {
         val start = at - (at % windowBytes)
+        runCatching { cache?.readWindow(start) }.getOrNull()?.let { cached ->
+            windowStart = start
+            window = cached
+            cache?.length?.let { length = it }
+            return cached.isNotEmpty()
+        }
         val end = start + windowBytes - 1
-        val request = HttpRequest.newBuilder(URI.create(url))
-            .timeout(Duration.ofSeconds(20))
-            .header("Range", "bytes=$start-$end")
-            .header("Accept", "*/*")
-            // Anything else would arrive compressed and the byte offsets the caller is counting in
-            // would stop meaning anything.
-            .header("Accept-Encoding", "identity")
-        headers.forEach { (name, value) -> runCatching { request.header(name, value) } }
 
-        val response = runCatching {
-            client.send(request.GET().build(), HttpResponse.BodyHandlers.ofByteArray())
-        }.getOrNull() ?: return false
+        fun send(withRange: Boolean): HttpResponse<ByteArray>? {
+            val builder = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(20))
+                .header("Accept", "*/*")
+                // Anything else would arrive compressed and the byte offsets the caller is counting
+                // in would stop meaning anything.
+                .header("Accept-Encoding", "identity")
+            if (withRange) builder.header("Range", "bytes=$start-$end")
+            headers.forEach { (name, value) ->
+                if (withRange || !name.equals("Range", ignoreCase = true)) {
+                    runCatching { builder.header(name, value) }
+                }
+            }
+            return runCatching {
+                client.send(builder.GET().build(), HttpResponse.BodyHandlers.ofByteArray())
+            }.getOrNull()
+        }
+
+        val ranged = send(withRange = true) ?: return false
+        // An ordinary static file answers a Range with 206 and an addon that does not know the
+        // header may answer 200 with the whole body; both are fine. A 403 or 416 on the range is
+        // the one case worth a second request without it, because forcing windowed reads for the
+        // cache must not turn a playable addon stream into a failed one.
+        val response = if (ranged.statusCode() == 403 || ranged.statusCode() == 416) {
+            send(withRange = false) ?: ranged
+        } else {
+            ranged
+        }
         if (response.statusCode() !in 200..299) {
             // A URL cleared before playback has been refused mid-track: tell the resolver, as the
             // phone's ChunkedDataSource does, so it forgets it and benches the client that minted it.
@@ -87,6 +122,29 @@ internal class DesktopRangeStream(
         }
         window = body
         if (length < 0) length = windowStart + body.size
+        cache?.let { entry ->
+            // A server is allowed to answer a range request with a different span. Only a span that
+            // starts on our window grid can be written into the map; anything else is left uncached
+            // rather than made to look like the window at this offset.
+            if (windowStart % windowBytes == 0L) {
+                runCatching {
+                    var offset = windowStart
+                    var at = 0
+                    while (at < body.size) {
+                        val size = minOf(windowBytes, body.size - at)
+                        entry.writeWindow(
+                            start = offset,
+                            body = body.copyOfRange(at, at + size),
+                            totalLength = length.takeIf { it > 0 },
+                            trimAfter = false,
+                        )
+                        at += size
+                        offset += size
+                    }
+                    entry.trim()
+                }
+            }
+        }
         return body.isNotEmpty()
     }
 

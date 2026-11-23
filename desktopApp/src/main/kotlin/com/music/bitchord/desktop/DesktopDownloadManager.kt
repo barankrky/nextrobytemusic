@@ -26,7 +26,7 @@ object DesktopDownloadManager {
         if (job != null) activeJobs[song.videoId] = job
         return try {
             require(song.localPath == null) { "This track is already local" }
-            val stream = DesktopMusicSources.resolve(song, quality, forDownload = true).getOrThrow()
+            val stream = DesktopMusicSources.resolve(song, quality).getOrThrow()
             val directory = DesktopUserFolders.music.resolve("nextrobytemusic")
             Files.createDirectories(directory)
             val safeName = buildString {

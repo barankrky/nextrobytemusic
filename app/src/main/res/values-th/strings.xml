@@ -87,6 +87,8 @@
     <string name="testing">กำลังทดสอบ…</string>
     <string name="connected">เชื่อมต่อแล้ว</string>
     <string name="account_integrations">บัญชีและการเชื่อมต่อ</string>
+    <string name="youtube_premium_audio">YouTube Premium audio</string>
+    <string name="youtube_premium_audio_subtitle">I have Premium: stream the higher-quality ~256 kbps Opus instead of the standard 160 kbps</string>
     <string name="account_scrobbling">บัญชีและการสโครบเบิล</string>
     <string name="rich_presence">Rich Presence</string>
     <string name="scrobbling">การสโครบเบิล</string>
@@ -181,6 +183,8 @@
     <string name="japanese">ญี่ปุ่น</string>
     <string name="russian">รัสเซีย</string>
     <string name="chinese">จีน (ตัวย่อ)</string>
+    <string name="chinese_simplified">จีน (ตัวย่อ)</string>
+    <string name="chinese_traditional">จีน (ตัวเต็ม)</string>
     <string name="hebrew">ฮีบรู</string>
     <string name="italian">อิตาลี</string>
     <string name="turkish">ตุรกี</string>
@@ -1043,6 +1047,7 @@
     <string name="sort_date_added_toggle">Date added</string>
 
     <string name="sort_default">Default order</string>
+    <string name="sort_track_number">Track number</string>
 
     <string name="sort_library">Sort</string>
 
@@ -1229,7 +1234,6 @@
     <string name="source_needs_lossless_output">ต้องใช้เอาต์พุตแบบ lossless · ใช้อุปกรณ์ที่รองรับ lossless</string>
     <string name="source_needs_lossless_bt_codec">ต้องใช้เอาต์พุตแบบ lossless · Bluetooth ใช้ %1$s อยู่ ใช้อุปกรณ์ที่รองรับ lossless</string>
     <string name="source_needs_lossless_bt_unknown">ต้องใช้เอาต์พุตแบบ lossless · ไม่ทราบว่ากำลังใช้ตัวแปลงสัญญาณ Bluetooth ใด</string>
-    <string name="source_downloads_off">สตรีมมิงเท่านั้น</string>
     <string name="lossless_output_permission">ตรวจสอบตัวแปลงสัญญาณ Bluetooth</string>
     <string name="lossless_output_permission_detail">อนุญาตอุปกรณ์ใกล้เคียงเพื่อให้หูฟัง LDAC หรือ LHDC ปลดล็อกส่วนเสริมแบบ lossless</string>
     <string name="cached_songs">เพลงในแคช</string>

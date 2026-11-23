@@ -109,6 +109,11 @@ class DesktopPlaybackEngine(
     private var upgradeJob: Job? = null
     private var nextResolveJob: Job? = null
 
+    /** A source stream resolved for a later track, and when it was resolved — signed URLs expire. */
+    private class Prefetched(val stream: DesktopStream, val atMs: Long)
+    private val prefetched = ConcurrentHashMap<String, Prefetched>()
+    private var prefetchJob: Job? = null
+
     @Volatile private var playbackSpeed = 1f
     @Volatile private var volume = 1f
     @Volatile private var paused = true
@@ -230,7 +235,26 @@ class DesktopPlaybackEngine(
             // literally named "Justin%20Bieber%20-%20…" and it answered ENOENT for a file that was
             // sitting right there.
             val localUrl = DesktopDownloadManager.savedFile(song)?.toAbsolutePath()?.toString()
+            val cachedFile = DesktopAudioCache.completeFile(song, audioQuality)
+            val prefetched = takePrefetched(song, excludedSourceId)
             val resolved = localUrl?.let { Result.success(DesktopLiveResolution(DesktopStream(it))) }
+                ?: cachedFile?.let { file ->
+                    DesktopTrackLog.log("opening cached '${song.title}' from $file")
+                    Result.success(
+                        DesktopLiveResolution(
+                            DesktopStream(
+                                url = file.toAbsolutePath().toString(),
+                                sourceId = DesktopAudioCache.sourceIdFor(song),
+                            ),
+                        ),
+                    )
+                }
+                ?: prefetched?.let { stream ->
+                    DesktopTrackLog.log(
+                        "opening prefetched '${song.title}' from ${DesktopMusicSources.sourceNameFor(stream)}",
+                    )
+                    Result.success(DesktopLiveResolution(stream))
+                }
                 ?: DesktopMusicSources.resolveLive(song, audioQuality, excludedSourceId)
             resolved.fold(
                 onSuccess = { live ->
@@ -260,14 +284,19 @@ class DesktopPlaybackEngine(
     private suspend fun openTrack(song: Song, stream: DesktopStream, startAtMs: Long): Result<Track> =
         withContext(Dispatchers.IO) {
             val decoder = DesktopAudioDecoder()
+            // An addon or module stream is read through a cache-filling window reader. The decoder
+            // owns the entry from here and releases it in close(), so a skipped track cannot keep
+            // it pinned against the evictor.
+            val cacheEntry = DesktopAudioCache.entryFor(song, audioQuality, stream)
             decoder.open(
                 url = stream.url,
                 headers = stream.headers,
                 // Float throughout: the processors work in it and the sink converts once, at the
                 // end.
                 requested = DesktopPcmFormat(44_100, 2, bytesPerSample = 4, isFloat = true),
-                windowed = stream.windowedReads,
+                windowed = stream.windowedReads || cacheEntry != null,
                 transport = stream.transport,
+                cache = cacheEntry,
             ).map {
                 if (startAtMs > 0) decoder.seek(startAtMs * 1_000)
                 // From here the decoder belongs to its own read-ahead thread: the audio thread only
@@ -290,6 +319,13 @@ class DesktopPlaybackEngine(
         if (retryingSongId != song.videoId) {
             retryingSongId = song.videoId
             DesktopTrackLog.log("could not decode '${song.title}' from ${DesktopMusicSources.sourceNameFor(stream)}: ${failure.message}")
+            // A complete cache file that will not decode is worse than no cache: every play would
+            // retry the same bytes. Drop it and let the retry fetch the track again.
+            val cached = runCatching { java.nio.file.Path.of(stream.url) }.getOrNull()
+            if (cached != null && DesktopAudioCache.owns(cached)) {
+                DesktopAudioCache.invalidate(song, audioQuality)
+                DesktopTrackLog.log("dropped the cached copy of '${song.title}' after it failed to decode")
+            }
             stream.sourceId?.let { refusedSources[song.videoId] = it }
             loadInternal(song, playWhenReady, excludedSourceId = stream.sourceId, priorFailure = failure)
         } else {
@@ -475,11 +511,16 @@ class DesktopPlaybackEngine(
         }
         nextResolveJob?.cancel()
         clearUpcoming()
-        if (song == null || transitionSecondsFor(song) == 0) return
-        nextSong = song
+        if (song == null) return
         // A download plays from its file, here as in [loadInternal] — never from whichever source
         // would have answered for it.
         val local = DesktopDownloadManager.savedFile(song)?.toAbsolutePath()?.toString()?.let { DesktopStream(it) }
+        // Resolve the source copy now, whether or not there is a transition. With crossfade off
+        // and Automix disabled this used to return before anything was resolved, so every track
+        // started on YouTube and swapped to the lossless copy a few seconds in.
+        if (local == null) prefetchForNext(song)
+        if (transitionSecondsFor(song) == 0) return
+        nextSong = song
         nextLocalStream = local
         // Measured on YouTube Opus (or the file) whatever will end up serving it, so Automix has
         // its analysis without anything being fetched from the source that will play it.
@@ -487,15 +528,64 @@ class DesktopPlaybackEngine(
             analyzer.request(song, local, song.durationText.durationSeconds())
         }
         if (local == null && DesktopMusicSources.mayServeFromAddon(song)) {
-            // Android does not read an addon's track ahead; it is asked for a stream only once the
-            // track is about to play. Held here and armed shortly before the transition — see
-            // [armAddonUpcoming].
-            DesktopTrackLog.log("'${song.title}' may come from an addon, so it is not read ahead")
+            // [prefetchForNext] above has already asked the source and started filling the cache.
+            // The arm path is still kept: a source that was slow to answer is raced again right
+            // before the transition, and whatever the prefetch was still waiting on is used then —
+            // see [armAddonUpcoming].
+            DesktopTrackLog.log("'${song.title}' may come from an addon; armed before its transition")
             awaitingArm.set(song)
             return
         }
         resolveUpcoming(song, local)
     }
+
+    /**
+     * Resolves a source-backed copy of [song] while the current track still plays, and downloads it
+     * into [DesktopAudioCache] when it is the kind that cache keeps.
+     *
+     * The transition path has [armAddonUpcoming] for this, but only when there is a transition at
+     * all: with crossfade off and Automix disabled, [prepareNext] used to return before anything
+     * was resolved, so every track started on YouTube and swapped to the source a few seconds in.
+     * This runs regardless of the transition, so the next track can open on the lossless copy from
+     * its first sample. Only source-backed answers are kept; a YouTube URL is what the ordinary
+     * path resolves anyway.
+     *
+     * The cache download is what makes the *next* play of the same track a local read rather than
+     * another addon round trip. A track that is already complete is skipped here without even
+     * resolving its URL.
+     */
+    private fun prefetchForNext(song: Song) {
+        prefetchJob?.cancel()
+        if (!DesktopMusicSources.mayServeFromCache(song)) return
+        prefetchJob = scope.launch(Dispatchers.IO) {
+            if (DesktopAudioCache.completeFile(song, audioQuality) != null) {
+                prefetched.remove(song.videoId)
+                DesktopTrackLog.log("'${song.title}' is already cached")
+                return@launch
+            }
+            val stream = DesktopMusicSources.resolve(song, audioQuality).getOrNull() ?: return@launch
+            if (stream.sourceId == null || stream.sourceId == "youtube") return@launch
+            prefetched[song.videoId] = Prefetched(stream, System.currentTimeMillis())
+            DesktopTrackLog.log(
+                "prefetched '${song.title}' from ${DesktopMusicSources.sourceNameFor(stream)}",
+            )
+            try {
+                DesktopAudioCache.prefetch(song, audioQuality, stream)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                DesktopTrackLog.log("could not cache '${song.title}': ${failure.message}")
+            }
+        }
+    }
+
+    /** A prefetched source stream for [song], if one is fresh and its source is still usable. */
+    private fun takePrefetched(song: Song, excludedSourceId: String? = null): DesktopStream? =
+        prefetched.remove(song.videoId)
+            ?.takeIf { System.currentTimeMillis() - it.atMs <= PREFETCH_TTL_MS }
+            ?.stream
+            ?.takeIf { excludedSourceId == null || it.sourceId != excludedSourceId }
+            ?.takeIf { it.sourceId == null || DesktopSourceRegistry.isEnabled(it.sourceId) }
 
     /**
      * Resolves [song] (or takes its file) and opens it as the incoming track, off the audio thread.
@@ -509,8 +599,10 @@ class DesktopPlaybackEngine(
     private fun resolveUpcoming(song: Song, local: DesktopStream? = null, race: Boolean = false) {
         nextResolveJob = scope.launch {
             val askedAt = System.nanoTime()
+            val prefetched = takePrefetched(song)
             val resolved: Result<DesktopLiveResolution> = when {
                 local != null -> Result.success(DesktopLiveResolution(local))
+                prefetched != null -> Result.success(DesktopLiveResolution(prefetched))
                 race -> DesktopMusicSources.resolveLive(song, audioQuality)
                 else -> DesktopMusicSources.resolve(song, audioQuality).map { DesktopLiveResolution(it) }
             }
@@ -1699,6 +1791,9 @@ class DesktopPlaybackEngine(
          * stream to open, and an incoming track that is not ready by the transition misses it.
          */
         private const val ADDON_ARM_LEAD_MS = 15_000L
+
+        /** How long a prefetched stream may wait for its track: inside the signed URL's life. */
+        private const val PREFETCH_TTL_MS = 10 * 60 * 1000L
 
         /** How long a better copy waits for the blend into its track to finish: up to a minute. */
         private const val BLEND_WAIT_POLLS = 300

@@ -138,6 +138,7 @@ import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Headphones
+import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
@@ -5812,13 +5813,13 @@ private fun DesktopSettingsScreen(
             }
             if (section == DesktopSettingsSection.STORAGE) item {
                 SettingsGroup(DesktopStrings["storage", "Storage"]) {
-                    var limitMb by remember { mutableStateOf(DesktopMediaCache.limitMb()) }
+                    var limitMb by remember { mutableStateOf(DesktopAudioCache.limitMb()) }
                     var cleared by remember { mutableStateOf<String?>(null) }
                     if (settingsRowVisible(DesktopStrings["song_cache_limit", "Song cache limit"])) {
                     Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
                         Text(DesktopStrings["song_cache_limit", "Song cache limit"], style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            if (limitMb > DesktopMediaCache.WARNING_MB) {
+                            if (limitMb > DesktopAudioCache.WARNING_MB) {
                                 "Keeps up to ${formatCacheSize(limitMb)} of downloaded audio on disk. " +
                                     "This can take a noticeable share of your free space."
                             } else {
@@ -5830,9 +5831,9 @@ private fun DesktopSettingsScreen(
                         DesktopBareSlider(
                             value = limitMb.toFloat(),
                             onValueChange = { limitMb = it.roundToInt() },
-                            onValueChangeFinished = { DesktopMediaCache.setLimitMb(limitMb) },
-                            valueRange = DesktopMediaCache.MIN_LIMIT_MB.toFloat()..
-                                DesktopMediaCache.MAX_LIMIT_MB.toFloat(),
+                            onValueChangeFinished = { DesktopAudioCache.setLimitMb(limitMb) },
+                            valueRange = DesktopAudioCache.MIN_LIMIT_MB.toFloat()..
+                                DesktopAudioCache.MAX_LIMIT_MB.toFloat(),
                             steps = 18,
                             modifier = Modifier.fillMaxWidth(),
                         )
@@ -5844,7 +5845,7 @@ private fun DesktopSettingsScreen(
                         "Clear song cache",
                         cleared ?: "Frees space used by downloaded audio",
                     ) {
-                        DesktopMediaCache.clear()
+                        DesktopAudioCache.clear()
                         cleared = "Song cache cleared"
                     }
                     var imagesCleared by remember { mutableStateOf(false) }
@@ -6351,6 +6352,7 @@ private fun DesktopSourceSettingsRow(
             when (config.kind) {
                 DesktopSourceKind.ADDON -> Icons.Rounded.Extension
                 DesktopSourceKind.CUSTOM_MODULE, DesktopSourceKind.MODULE -> Icons.Rounded.Extension
+                DesktopSourceKind.NEXTRO_HIGH_RES -> Icons.Rounded.HighQuality
                 DesktopSourceKind.JIOSAAVN -> Icons.Rounded.GraphicEq
                 DesktopSourceKind.YOUTUBE -> Icons.Rounded.PlayCircle
             },

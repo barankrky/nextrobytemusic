@@ -111,6 +111,8 @@
     <string name="testing">Test in corso…</string>
     <string name="connected">Connesso</string>
     <string name="account_integrations">Account e integrazioni</string>
+    <string name="youtube_premium_audio">YouTube Premium audio</string>
+    <string name="youtube_premium_audio_subtitle">I have Premium: stream the higher-quality ~256 kbps Opus instead of the standard 160 kbps</string>
     <string name="account_scrobbling">Account e scrobbling</string>
     <string name="rich_presence">Presenza avanzata</string>
     <string name="scrobbling">Scrobbling</string>
@@ -205,6 +207,8 @@
     <string name="japanese">Giapponese</string>
     <string name="russian">Russo</string>
     <string name="chinese">Cinese (semplificato)</string>
+    <string name="chinese_simplified">Cinese (semplificato)</string>
+    <string name="chinese_traditional">Cinese (tradizionale)</string>
     <string name="hebrew">Ebraico</string>
     <string name="italian">Italiano</string>
     <string name="turkish">Turco</string>
@@ -976,6 +980,7 @@
     <string name="sort_songs">Ordina brani</string>
 
     <string name="sort_default">Ordine predefinito</string>
+    <string name="sort_track_number">Track number</string>
 
     <string name="unsubscribe">Annulla iscrizione</string>
 
@@ -1185,7 +1190,6 @@
     <string name="source_needs_lossless_output">Richiede un’uscita lossless · usa un dispositivo compatibile con il lossless</string>
     <string name="source_needs_lossless_bt_codec">Richiede un’uscita lossless · il Bluetooth usa %1$s; usa un dispositivo compatibile con il lossless</string>
     <string name="source_needs_lossless_bt_unknown">Richiede un’uscita lossless · impossibile sapere quale codec Bluetooth è in uso</string>
-    <string name="source_downloads_off">Solo streaming</string>
     <string name="lossless_output_permission">Controlla codec Bluetooth</string>
     <string name="lossless_output_permission_detail">Consenti Dispositivi nelle vicinanze perché le cuffie LDAC o LHDC sblocchino i componenti lossless</string>
     <string name="cached_songs">Brani in cache</string>

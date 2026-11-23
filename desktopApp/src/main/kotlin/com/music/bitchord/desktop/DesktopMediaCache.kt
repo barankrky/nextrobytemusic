@@ -8,12 +8,12 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.extension
 
 /**
- * The media this app keeps on disk so it is not fetched twice — motion-artwork clips today.
+ * The media clips this app keeps on disk so they are not fetched twice — motion artwork, which
+ * loops dozens of times behind one track and without this was re-downloaded on every loop.
  *
- * Android bounds the same thing with `AudioCache`'s LRU evictor and a limit the Storage settings
- * set. Desktop's audio is demuxed straight from the source by FFmpeg rather than written through a
- * cache, so what accumulates here is the clips, which loop dozens of times behind one track and
- * without this were re-downloaded on every loop.
+ * Audio has its own store in [DesktopAudioCache]. The two are separate because they answer
+ * different questions: a clip is a few seconds of video evicted by a small budget, while a track is
+ * tens of megabytes that the Storage row's song-cache limit is meant to bound.
  */
 internal object DesktopMediaCache {
 
@@ -92,7 +92,13 @@ internal object DesktopMediaCache {
         .joinToString("") { "%02x".format(it) }
         .take(32)
 
-    internal const val KEY_CACHE_LIMIT_MB = "media_cache_limit_mb"
+    /**
+     * The clip store's own key. The Storage row's "song cache" setting now
+     * drives [DesktopAudioCache], which owns the old `media_cache_limit_mb`
+     * key; keeping the clip budget separate stops a chosen song-cache size
+     * from becoming two caches of that size.
+     */
+    internal const val KEY_CACHE_LIMIT_MB = "clip_cache_limit_mb"
 
     /** Small on purpose: a clip is a few seconds of video, not a library. */
     internal const val DEFAULT_LIMIT_MB = 512

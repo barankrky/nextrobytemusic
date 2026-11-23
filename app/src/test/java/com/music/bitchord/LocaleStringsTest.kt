@@ -34,6 +34,22 @@ class LocaleStringsTest(private val tag: String) {
         private fun parse(file: File): Document =
             DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file)
 
+        /**
+         * The picker's tag to the resource qualifier that actually holds it.
+         *
+         * `SUPPORTED_LANGUAGES` speaks BCP-47 (`zh-CN`, `zh-TW`), which is what
+         * AppCompat and the system picker take; the resources use Android's
+         * qualifiers instead, and the two do not spell Chinese the same way —
+         * `values-zh` is Simplified and `values-zh-rTW` is one of the two
+         * Traditional directories. Comparing the tag straight to a directory
+         * asked for `values-zh-CN`, which has never existed.
+         */
+        private fun localeDir(tag: String): String = when (tag) {
+            "zh-CN" -> "zh"
+            "zh-TW" -> "zh-rTW"
+            else -> tag
+        }
+
         /** Keys that need translating: `translatable="false"` entries are excluded. */
         private fun translatableKeys(doc: Document): Set<String> {
             val keys = mutableSetOf<String>()
@@ -56,12 +72,13 @@ class LocaleStringsTest(private val tag: String) {
 
     @Test
     fun strings_containsAllBaseKeys() {
-        val localeFile = File(resDir, "values-$tag/strings.xml")
-        assertTrue("values-$tag/strings.xml must exist", localeFile.exists())
+        val dir = localeDir(tag)
+        val localeFile = File(resDir, "values-$dir/strings.xml")
+        assertTrue("values-$dir/strings.xml must exist", localeFile.exists())
 
         val missingKeys = baseKeys - translatableKeys(parse(localeFile))
         assertTrue(
-            "values-$tag/strings.xml is missing ${missingKeys.size} keys from values/strings.xml: $missingKeys",
+            "values-$dir/strings.xml is missing ${missingKeys.size} keys from values/strings.xml: $missingKeys",
             missingKeys.isEmpty(),
         )
     }

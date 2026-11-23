@@ -523,21 +523,18 @@ internal object DesktopAddonSource {
     // ── Manifest policy ─────────────────────────────────────────────────
 
     /**
-     * What each addon's manifest said about `allowDownloads` this session. Read ahead of the
-     * stored config, which only catches up when the value actually changes.
+     * Picks up a changed `allowDownloads` from the manifest so the stored
+     * config can be read back later. The value is recorded, not obeyed: an
+     * explicit download saves a streaming-only addon's stream — see
+     * [DesktopSourceRegistry.resolve] — so this is a diagnostic, not a gate.
      */
-    private val learned = ConcurrentHashMap<String, Boolean>()
-
-    fun allowsDownloads(config: DesktopSourceConfig): Boolean = learned[config.id] ?: config.allowDownloads
-
-    /** Picks up a changed `allowDownloads` from the manifest — the client's cached copy, which the request reads anyway. */
     private suspend fun refreshPolicy(config: DesktopSourceConfig) {
         client(config).manifest().getOrNull()?.let { record(config, it) }
     }
 
     private fun record(config: DesktopSourceConfig, manifest: DesktopAddonManifest) {
         val allowed = manifest.downloadsAllowed
-        if (learned.put(config.id, allowed) == allowed || config.allowDownloads == allowed) return
+        if (config.allowDownloads == allowed) return
         val persistence = DesktopPersistence()
         val stored = persistence.sourceConfigs()
         // An unsaved candidate from the editor has nothing to update.

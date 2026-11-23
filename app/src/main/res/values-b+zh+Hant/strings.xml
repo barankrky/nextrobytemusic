@@ -84,6 +84,8 @@
     <string name="testing">測試中…</string>
     <string name="connected">已連線</string>
     <string name="account_integrations">賬號與整合</string>
+    <string name="youtube_premium_audio">YouTube Premium audio</string>
+    <string name="youtube_premium_audio_subtitle">I have Premium: stream the higher-quality ~256 kbps Opus instead of the standard 160 kbps</string>
     <string name="account_scrobbling">賬號與Scrobbling</string>
     <string name="rich_presence">Rich Presence</string>
     <string name="scrobbling">Scrobbling</string>
@@ -960,6 +962,7 @@
     <string name="sort_date_added_toggle">新增日期</string>
 
     <string name="sort_default">預設排序</string>
+    <string name="sort_track_number">Track number</string>
 
     <string name="sort_library">排序</string>
 
@@ -1225,7 +1228,6 @@
     <string name="source_needs_lossless_output">需要無損輸出 · 請使用支援無損的裝置</string>
     <string name="source_needs_lossless_bt_codec">需要無損輸出 · 藍芽當前為 %1$s；請使用支援無損的裝置</string>
     <string name="source_needs_lossless_bt_unknown">需要無損輸出 · 無法識別正在使用的藍芽編解碼器</string>
-    <string name="source_downloads_off">僅限線上播放</string>
     <string name="lossless_output_permission">檢查藍芽編解碼器</string>
     <string name="lossless_output_permission_detail">允許“附近的裝置”許可權，LDAC 或 LHDC 耳機即可解鎖僅限無損的外掛</string>
     <string name="cached_songs">已快取的歌曲</string>

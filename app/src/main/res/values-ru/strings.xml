@@ -99,6 +99,8 @@
     <string name="testing">Проверка…</string>
     <string name="connected">Подключено</string>
     <string name="account_integrations">Аккаунт и интеграции</string>
+    <string name="youtube_premium_audio">YouTube Premium audio</string>
+    <string name="youtube_premium_audio_subtitle">I have Premium: stream the higher-quality ~256 kbps Opus instead of the standard 160 kbps</string>
     <string name="account_scrobbling">Аккаунт и скробблинг</string>
     <string name="rich_presence">Rich Presence</string>
     <string name="scrobbling">Скробблинг</string>
@@ -184,6 +186,8 @@
     <string name="japanese">Японский</string>
     <string name="russian">Русский</string>
     <string name="chinese">Китайский (упрощённый)</string>
+    <string name="chinese_simplified">Китайский (упрощённый)</string>
+    <string name="chinese_traditional">Китайский (традиционный)</string>
     <string name="hebrew">Иврит</string>
     <string name="italian">Итальянский</string>
     <string name="turkish">Турецкий</string>
@@ -1007,6 +1011,7 @@
     <string name="sort_date_added_toggle">Дата добавления</string>
 
     <string name="sort_default">По умолчанию</string>
+    <string name="sort_track_number">Track number</string>
 
     <string name="sort_library">Сортировка</string>
 
@@ -1278,7 +1283,6 @@
     <string name="source_needs_lossless_output">Нужен выход без потерь · используйте устройство с поддержкой звука без потерь</string>
     <string name="source_needs_lossless_bt_codec">Нужен выход без потерь · Bluetooth работает на %1$s; используйте устройство с поддержкой звука без потерь</string>
     <string name="source_needs_lossless_bt_unknown">Нужен выход без потерь · не удаётся определить используемый Bluetooth-кодек</string>
-    <string name="source_downloads_off">Только стриминг</string>
     <string name="lossless_output_permission">Проверить Bluetooth-кодек</string>
     <string name="lossless_output_permission_detail">Разрешите доступ к устройствам поблизости, чтобы наушники LDAC или LHDC открыли аддоны без потерь</string>
     <string name="cached_songs">Кэшированные треки</string>

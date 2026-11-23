@@ -1445,7 +1445,7 @@ private fun DrillDownSongList(
                     isPlaying = song.isSameTrackAs(currentSong) && isPlaying,
                     searchPlayingStyle = true,
                     activeTint = PlayingAccent,
-                    trackNumber = index + 1,
+                    trackNumber = song.trackNumber ?: index + 1,
                     onClick = { onSongClick(songs, index) },
                     onLongPress = { onSongLongPress(song) },
                     onMore = onSongMore?.let { more -> { more(song) } },

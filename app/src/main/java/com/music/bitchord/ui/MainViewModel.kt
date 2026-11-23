@@ -2755,8 +2755,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * The Cached songs folder: the YouTube and JioSaavn tracks the song cache
-     * is holding, most recently played first. See [AudioCache.cachedSongs].
+     * The Cached songs folder: every track the song cache is holding —
+     * YouTube, JioSaavn, addons and modules — most recently played first.
+     * See [AudioCache.cachedSongs].
      */
     private suspend fun cachedSongsState(): UiState<List<Song>> {
         val songs = AudioCache.cachedSongs().map { it.song }

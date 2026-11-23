@@ -2,9 +2,12 @@ package com.music.bitchord.desktop
 
 import com.music.bitchord.data.lyrics.LyricsSource
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.sources.NextroSources
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonArray
 import java.nio.charset.StandardCharsets
 import java.util.Base64
 import java.util.UUID
@@ -103,6 +106,27 @@ class DesktopPersistence {
     fun saveSourceEnabled(sourceId: String, enabled: Boolean) =
         saveBoolean("source_${sourceId}_enabled", enabled)
 
+    /**
+     * The stored source list, one entry at a time.
+     *
+     * A single entry naming a kind this build no longer has — `HIGH_RES`,
+     * retired when the built-in became the nextro's High-Res gateway — used to
+     * fail a strict `List<...>` decode and take every other entry down with
+     * it: the app then reported the whole store unreadable and ran on the
+     * built-ins alone, hiding the user's addons and modules. Android has
+     * decoded per entry for exactly this reason; this is the desktop half of
+     * the same rule.
+     */
+    private fun decodeStoredSources(raw: String): List<DesktopSourceConfig>? {
+        val elements = runCatching { sourceJson.parseToJsonElement(raw).jsonArray }.getOrNull()
+            ?: return null
+        return elements.mapNotNull { element ->
+            runCatching { sourceJson.decodeFromJsonElement(DesktopSourceConfig.serializer(), element) }
+                .onFailure { DesktopTrackLog.log("dropping unreadable stored source: ${it.message}") }
+                .getOrNull()
+        }
+    }
+
     /** The source list is the desktop equivalent of Android's encrypted SourceRegistry state. */
     internal fun sourceConfigs(): List<DesktopSourceConfig> {
         val protected = DesktopPreferenceChunks.read(preferences, KEY_SOURCE_CONFIGS_PROTECTED)
@@ -114,13 +138,17 @@ class DesktopPersistence {
         } else {
             legacy
         }
-        val stored = raw?.let {
-            runCatching { sourceJson.decodeFromString<List<DesktopSourceConfig>>(it) }.getOrNull()
-        }
+        val stored = raw?.let(::decodeStoredSources)
         // Something is stored and could not be read.
         if ((raw != null || protected != null) && stored == null) {
             DesktopTrackLog.log("stored sources could not be read; leaving them untouched")
             return listOf(
+                DesktopSourceConfig(
+                    NextroSources.HIGH_RES_ID,
+                    DesktopSourceKind.NEXTRO_HIGH_RES,
+                    label = NextroSources.HIGH_RES_LABEL,
+                    baseUrl = NextroSources.HIGH_RES_URL,
+                ),
                 DesktopSourceConfig("jiosaavn", DesktopSourceKind.JIOSAAVN, enabled = sourceEnabled("jiosaavn")),
                 DesktopSourceConfig("youtube", DesktopSourceKind.YOUTUBE),
             )
@@ -130,6 +158,16 @@ class DesktopPersistence {
         val initial = (stored ?: migrateLegacySources())
             .filterNot { it.kind == DesktopSourceKind.MODULE }
         val withBuiltIns = initial.toMutableList().apply {
+            if (none { it.kind == DesktopSourceKind.NEXTRO_HIGH_RES }) {
+                add(
+                    DesktopSourceConfig(
+                        NextroSources.HIGH_RES_ID,
+                        DesktopSourceKind.NEXTRO_HIGH_RES,
+                        label = NextroSources.HIGH_RES_LABEL,
+                        baseUrl = NextroSources.HIGH_RES_URL,
+                    ),
+                )
+            }
             if (none { it.kind == DesktopSourceKind.JIOSAAVN }) {
                 add(
                     DesktopSourceConfig(
@@ -147,7 +185,15 @@ class DesktopPersistence {
         // YouTube remains the non-removable catalogue fallback, matching the Android source
         // registry.
         val normalized = withBuiltIns.map {
-            if (it.kind == DesktopSourceKind.YOUTUBE && !it.enabled) it.copy(enabled = true) else it
+            when {
+                it.kind == DesktopSourceKind.YOUTUBE && !it.enabled -> it.copy(enabled = true)
+                it.kind == DesktopSourceKind.NEXTRO_HIGH_RES && it.baseUrl.isBlank() ->
+                    it.copy(
+                        baseUrl = NextroSources.HIGH_RES_URL,
+                        label = it.label.ifBlank { NextroSources.HIGH_RES_LABEL },
+                    )
+                else -> it
+            }
         }.inSourceOrder()
         if (stored == null || normalized != stored || (DesktopPlatform.isWindows && protected == null)) {
             saveSourceConfigs(normalized)

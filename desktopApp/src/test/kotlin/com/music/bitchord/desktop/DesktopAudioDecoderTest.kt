@@ -1,7 +1,10 @@
 package com.music.bitchord.desktop
 
+import com.sun.net.httpserver.HttpServer
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.net.InetSocketAddress
+import java.nio.file.Files
 import javax.sound.sampled.AudioFileFormat
 import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioInputStream
@@ -90,6 +93,58 @@ class DesktopAudioDecoderTest {
             assertTrue(remaining < whole / 2 + 4 * 1_024, "read $remaining of $whole after seeking to halfway")
         } finally {
             decoder.close()
+        }
+    }
+
+    @Test
+    fun `a track read through the audio cache decodes and leaves a complete entry`() {
+        val file = tone(seconds = 1.0, rate = 44_100, hz = 440.0)
+        val body = file.readBytes()
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/track") { exchange ->
+            val range = exchange.requestHeaders.getFirst("Range")
+            val match = Regex("bytes=(\\d+)-(\\d+)").find(range.orEmpty())
+            if (match == null) {
+                exchange.sendResponseHeaders(403, -1)
+            } else {
+                val from = match.groupValues[1].toInt()
+                val to = minOf(match.groupValues[2].toInt(), body.size - 1)
+                if (from >= body.size) {
+                    exchange.sendResponseHeaders(416, -1)
+                } else {
+                    val slice = body.copyOfRange(from, to + 1)
+                    exchange.responseHeaders.add("Content-Range", "bytes $from-$to/${body.size}")
+                    exchange.sendResponseHeaders(206, slice.size.toLong())
+                    exchange.responseBody.use { it.write(slice) }
+                }
+            }
+            exchange.close()
+        }
+        server.start()
+        try {
+            val store = DesktopAudioCacheStore(
+                directory = Files.createTempDirectory("nextro-cache-decode"),
+                windowBytes = 32 * 1024,
+                limitBytes = { 10L * 1024 * 1024 },
+            )
+            val key = "addon:gateway:track|LOSSLESS|stereo"
+            val entry = store.entryFor(key)
+            val decoder = DesktopAudioDecoder()
+            decoder.open(
+                url = "http://127.0.0.1:${server.address.port}/track",
+                requested = DesktopPcmFormat(44_100, 2, 2),
+                windowed = true,
+                cache = entry,
+            ).getOrThrow()
+            try {
+                assertTrue(decoder.readAll().isNotEmpty())
+            } finally {
+                decoder.close()
+            }
+            assertTrue(entry.complete)
+            assertNotNull(store.completeFile(key))
+        } finally {
+            server.stop(0)
         }
     }
 

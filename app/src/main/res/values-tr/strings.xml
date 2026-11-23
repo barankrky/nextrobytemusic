@@ -93,6 +93,8 @@
     <string name="testing">Test ediliyor…</string>
     <string name="connected">Bağlandı</string>
     <string name="account_integrations">Hesap ve entegrasyonlar</string>
+    <string name="youtube_premium_audio">YouTube Premium sesi</string>
+    <string name="youtube_premium_audio_subtitle">Premium\'um var: standart 160 kbps yerine daha yüksek kaliteli ~256 kbps Opus akışı kullan</string>
     <string name="account_scrobbling">Hesap ve scrobbling</string>
     <string name="rich_presence">Zengin varlık</string>
     <string name="scrobbling">Scrobbling</string>
@@ -187,6 +189,8 @@
     <string name="japanese">Japonca</string>
     <string name="russian">Rusça</string>
     <string name="chinese">Çince (Basitleştirilmiş)</string>
+    <string name="chinese_simplified">Çince (Basitleştirilmiş)</string>
+    <string name="chinese_traditional">Çince (Geleneksel)</string>
     <string name="hebrew">İbranice</string>
     <string name="italian">İtalyanca</string>
     <string name="turkish">Türkçe</string>
@@ -958,6 +962,7 @@
     <string name="sort_songs">Şarkıları sırala</string>
 
     <string name="sort_default">Varsayılan sıra</string>
+    <string name="sort_track_number">Parça numarası</string>
 
     <string name="unsubscribe">Abonelikten çık</string>
 
@@ -1203,12 +1208,11 @@
     <string name="source_needs_lossless_output">Kayıpsız çıkış gerekir · kayıpsız sesi destekleyen bir cihaz kullanın</string>
     <string name="source_needs_lossless_bt_codec">Kayıpsız çıkış gerekir · Bluetooth %1$s kullanıyor; kayıpsız sesi destekleyen bir cihaz kullanın</string>
     <string name="source_needs_lossless_bt_unknown">Kayıpsız çıkış gerekir · hangi Bluetooth kodeğinin kullanıldığı anlaşılamıyor</string>
-    <string name="source_downloads_off">Yalnızca akış</string>
     <string name="lossless_output_permission">Bluetooth kodeğini kontrol et</string>
     <string name="lossless_output_permission_detail">LDAC veya LHDC kulaklıkların kayıpsız eklentileri açabilmesi için Yakındaki cihazlar iznini verin</string>
     <string name="cached_songs">Önbellekteki şarkılar</string>
-    <string name="cached_songs_subtitle">Şarkı önbelleğindeki YouTube ve JioSaavn şarkıları</string>
-    <string name="cached_songs_empty">Henüz önbellekte şarkı yok. YouTube veya JioSaavn üzerinden çaldığın şarkılar burada görünecek.</string>
+    <string name="cached_songs_subtitle">Şarkı önbelleğindeki YouTube, JioSaavn, eklenti ve modül şarkıları</string>
+    <string name="cached_songs_empty">Henüz önbellekte şarkı yok. Herhangi bir kaynaktan çaldığın şarkılar burada görünecek.</string>
     <string name="show_cache_folder">Önbellekteki şarkılar klasörünü göster</string>
     <string name="show_cache_folder_subtitle">Kitaplığa, önbellekte tutulan YouTube ve JioSaavn şarkılarını içeren bir klasör ekler</string>
     <string name="song_cache_unlimited">Sınırsız</string>

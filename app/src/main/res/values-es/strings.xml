@@ -90,6 +90,8 @@
     <string name="testing">Probando…</string>
     <string name="connected">Conectado</string>
     <string name="account_integrations">Cuenta e integraciones</string>
+    <string name="youtube_premium_audio">YouTube Premium audio</string>
+    <string name="youtube_premium_audio_subtitle">I have Premium: stream the higher-quality ~256 kbps Opus instead of the standard 160 kbps</string>
     <string name="account_scrobbling">Cuenta y registro de reproducciones</string>
     <string name="rich_presence">Presencia enriquecida</string>
     <string name="scrobbling">Registro de reproducciones</string>
@@ -175,6 +177,8 @@
     <string name="japanese">Japonés</string>
     <string name="russian">Ruso</string>
     <string name="chinese">Chino (simplificado)</string>
+    <string name="chinese_simplified">Chino (simplificado)</string>
+    <string name="chinese_traditional">Chino (tradicional)</string>
     <string name="hebrew">Hebreo</string>
     <string name="italian">Italiano</string>
     <string name="turkish">Turco</string>
@@ -975,6 +979,7 @@
     <string name="sort_songs">Ordenar canciones</string>
 
     <string name="sort_default">Orden predeterminado</string>
+    <string name="sort_track_number">Track number</string>
 
     <string name="unsubscribe">Cancelar suscripción</string>
 
@@ -1218,7 +1223,6 @@
     <string name="source_needs_lossless_output">Necesita una salida sin pérdida · usa un dispositivo compatible con audio sin pérdida</string>
     <string name="source_needs_lossless_bt_codec">Necesita una salida sin pérdida · el Bluetooth usa %1$s; usa un dispositivo compatible con audio sin pérdida</string>
     <string name="source_needs_lossless_bt_unknown">Necesita una salida sin pérdida · no se puede saber qué códec Bluetooth se usa</string>
-    <string name="source_downloads_off">Solo streaming</string>
     <string name="lossless_output_permission">Comprobar códec Bluetooth</string>
     <string name="lossless_output_permission_detail">Permite Dispositivos cercanos para que los auriculares LDAC o LHDC desbloqueen los complementos sin pérdida</string>
     <string name="cached_songs">Canciones en caché</string>

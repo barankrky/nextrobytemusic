@@ -510,8 +510,8 @@ object SourceResolver {
         // [DownloadQuality]'s answer and what it may spend is
         // [AppSettings.wifiOnlyDownloads]'s, and a mobile-data rung of Medium
         // has no business deciding that a file saved over Wi-Fi later is a
-        // YouTube one. Minus any addon whose manifest says `allowDownloads: 0`:
-        // that one plays, but the file comes from whoever is next in line.
+        // YouTube one. An addon whose manifest says `allowDownloads: 0` is
+        // still in here: an explicit download saves its stream anyway.
         val active = SourceRegistry.activeForDownload()
         // YouTube can be switched off, and a download still goes to it when
         // nothing here answers — the download path never consults this list. So

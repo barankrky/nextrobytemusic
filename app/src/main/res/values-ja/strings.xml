@@ -84,6 +84,8 @@
     <string name="testing">テスト中…</string>
     <string name="connected">接続済み</string>
     <string name="account_integrations">アカウントと連携</string>
+    <string name="youtube_premium_audio">YouTube Premium audio</string>
+    <string name="youtube_premium_audio_subtitle">I have Premium: stream the higher-quality ~256 kbps Opus instead of the standard 160 kbps</string>
     <string name="account_scrobbling">アカウントとスクロブリング</string>
     <string name="rich_presence">リッチプレゼンス</string>
     <string name="scrobbling">スクロブリング</string>
@@ -169,6 +171,8 @@
     <string name="japanese">日本語</string>
     <string name="russian">ロシア語</string>
     <string name="chinese">中国語（簡体字）</string>
+    <string name="chinese_simplified">中国語（簡体字）</string>
+    <string name="chinese_traditional">中国語（繁体字）</string>
     <string name="hebrew">ヘブライ語</string>
     <string name="italian">イタリア語</string>
     <string name="turkish">トルコ語</string>
@@ -967,6 +971,7 @@
     <string name="sort_date_added_toggle">追加日</string>
 
     <string name="sort_default">デフォルトの順序</string>
+    <string name="sort_track_number">Track number</string>
 
     <string name="sort_library">並べ替え</string>
 
@@ -1224,7 +1229,6 @@
     <string name="source_needs_lossless_output">ロスレス出力が必要 · ロスレス対応のデバイスを使用してください</string>
     <string name="source_needs_lossless_bt_codec">ロスレス出力が必要 · Bluetoothは%1$sです。ロスレス対応のデバイスを使用してください</string>
     <string name="source_needs_lossless_bt_unknown">ロスレス出力が必要 · 使用中のBluetoothコーデックを判別できません</string>
-    <string name="source_downloads_off">ストリーミングのみ</string>
     <string name="lossless_output_permission">Bluetoothコーデックを確認</string>
     <string name="lossless_output_permission_detail">付近のデバイスを許可すると、LDACまたはLHDCのヘッドホンでロスレス専用アドオンを使えます</string>
     <string name="cached_songs">キャッシュ済みの曲</string>

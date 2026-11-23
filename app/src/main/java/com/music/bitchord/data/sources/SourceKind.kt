@@ -101,6 +101,30 @@ enum class SourceKind(
     ),
 
     /**
+     * nextro's High-Res: the gateway addon this build ships pointed at.
+     *
+     * An addon in every way that matters — the app talks to it through the
+     * same `/manifest.json` → `/search` → `/stream` protocol as one the user
+     * added — but seeded and non-removable, because it is the source the build
+     * is built around. The gateway returns a signed media URL and verifies the
+     * FLAC bytes before it hands one over.
+     *
+     * The chips say FLAC and Lossless rather than Hi-Res on purpose: the
+     * catalogue was measured at 16-bit/44.1kHz for most rows and 24-bit/44.1kHz
+     * for some, with no 96kHz file seen.
+     */
+    NEXTRO_HIGH_RES(
+        label = NextroSources.HIGH_RES_LABEL,
+        detail = "Lossless FLAC through nextro's own addon gateway. Search and play " +
+            "without an account or a key.",
+        labels = listOf("FLAC", "Lossless"),
+        needsServer = false,
+        canServeLossless = true,
+        worthPrefetching = true,
+        rank = 1,
+    ),
+
+    /**
      * A URL to a compatible module-index JSON.
      *
      * The index lists JS plugin descriptors; each plugin ships a JS file

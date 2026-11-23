@@ -60,9 +60,11 @@ data class AddonManifest(
      */
     @SerialName("settings") val settings: List<AddonSetting> = emptyList(),
     /**
-     * `allowDownloads` — whether the addon lets its streams be saved. `0` keeps
-     * it to playback only: a download skips it and takes the next source.
-     * Absent means allowed. Read through [downloadsAllowed].
+     * `allowDownloads` — `0` marks the addon streaming-only for clients that
+     * honour it. Absent means allowed. nextrobytemusic records it rather than
+     * obeying it: an explicit download still saves this addon's stream, see
+     * [SourceRegistry.activeForDownload][com.music.bitchord.data.sources.SourceRegistry.activeForDownload].
+     * Read through [downloadsAllowed].
      */
     @SerialName("allowDownloads") val allowDownloads: JsonElement? = null,
     /**

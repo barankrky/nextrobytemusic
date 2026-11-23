@@ -3,6 +3,7 @@ package com.music.bitchord.desktop
 import com.music.bitchord.data.model.SearchFilter
 import com.music.bitchord.data.model.SearchResult
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.sources.NextroSources
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -132,14 +133,34 @@ internal object DesktopSourceRegistry {
      * Whether resolving [song] could ask an addon for it — an addon's own row, or a YouTube row
      * with an addon ranked above YouTube to substitute it.
      *
-     * Such a track is not read ahead: an addon is only asked for a stream once the track is about
-     * to play, as on Android, whose read-ahead only warms sources that are
-     * `worthPrefetching`.
+     * Such a track is a candidate for [DesktopAudioCache]'s read-ahead: the player asks the
+     * source for a stream while the current track plays and downloads it into the cache, rather
+     * than waiting for the track to start. The transition arm path still races a slow source at
+     * the moment it is needed.
      */
     fun mayServeFromAddon(song: Song): Boolean {
         val addons = playbackAdapters(null).filterIsInstance<AddonAdapter>()
         if (addons.isEmpty()) return false
         if (DesktopAddonSource.parseTrack(song.videoId) != null) return true
+        return hasYouTubeOriginal(song) && !song.isVideo && !DesktopOriginalVersion.isPinned(song.videoId)
+    }
+
+    /**
+     * Whether [song] could be answered by a source the audio cache keeps — an addon or module row,
+     * or a YouTube row such a source may substitute. The prefetch uses this rather than
+     * [mayServeFromAddon] because a module is read ahead too, even though the transition arm path
+     * only has a special case for addons.
+     */
+    fun mayServeFromCache(song: Song): Boolean {
+        val hasCacheable = playbackAdapters(null).any {
+            it.config.kind == DesktopSourceKind.ADDON ||
+                it.config.kind == DesktopSourceKind.NEXTRO_HIGH_RES ||
+                it.config.kind == DesktopSourceKind.MODULE ||
+                it.config.kind == DesktopSourceKind.CUSTOM_MODULE
+        }
+        if (!hasCacheable) return false
+        if (DesktopAddonSource.parseTrack(song.videoId) != null) return true
+        if (DesktopModuleSource.parseTrack(song.videoId) != null) return true
         return hasYouTubeOriginal(song) && !song.isVideo && !DesktopOriginalVersion.isPinned(song.videoId)
     }
 
@@ -159,25 +180,43 @@ internal object DesktopSourceRegistry {
     /**
      * The sources a *stream* may come from: enabled, complete, and permitted by the ceiling in
      * force.
-     *
-     * Downloads deliberately do not filter on an addon's `allowDownloads`: an explicit download
-     * request may save a stream the addon marks as streaming-only.
      */
     private fun playbackAdapters(quality: String?): List<SourceAdapter> {
         val ceiling = ceiling(quality)
         return adapters().filter { ceiling.permits(it.config.kind) }
     }
 
+    /**
+     * The entries a source walk starts from, before the ceiling narrows it.
+     *
+     * Deliberately the same list for playback and downloads. An addon's
+     * `allowDownloads: 0` is a statement about what it expects its streams used
+     * for, and an explicit download request here is allowed to save one anyway
+     * rather than quietly taking the next source in line — the phone's
+     * `SourceRegistry.activeForDownload` makes the same call. Kept as its own
+     * name so a future rule that genuinely belongs to downloads has somewhere
+     * to live that playback does not inherit, and so the policy has one seam a
+     * test can hold.
+     */
+    internal fun downloadWalk(configs: List<DesktopSourceConfig>): List<DesktopSourceConfig> =
+        configs.inSourceOrder().filter { it.enabled && it.isComplete }
+
     private fun adapters(): List<SourceAdapter> =
-        configs()
-            .inSourceOrder()
-            .filter { it.enabled && it.isComplete }
+        downloadWalk(configs())
             .map { config ->
                 when (config.kind) {
                     DesktopSourceKind.ADDON -> AddonAdapter(config)
                     DesktopSourceKind.CUSTOM_MODULE,
                     DesktopSourceKind.MODULE,
                     -> ModuleAdapter(config)
+                    // The gateway is an addon behind the scenes; the kind only makes it seeded,
+                    // non-removable and ranked above JioSaavn and YouTube.
+                    DesktopSourceKind.NEXTRO_HIGH_RES -> AddonAdapter(
+                        config.copy(
+                            baseUrl = config.baseUrl.ifBlank { NextroSources.HIGH_RES_URL },
+                            label = config.label.ifBlank { NextroSources.HIGH_RES_LABEL },
+                        ),
+                    )
                     DesktopSourceKind.JIOSAAVN -> JioAdapter(config)
                     DesktopSourceKind.YOUTUBE -> YouTubeAdapter(config)
                 }
@@ -189,6 +228,10 @@ internal object DesktopSourceRegistry {
 
     fun isEnabled(sourceId: String): Boolean = configs().firstOrNull { it.id == sourceId }?.enabled == true
 
+    /** Which kind [sourceId] names, for callers that need to classify a stream rather than ask it. */
+    internal fun kindOf(sourceId: String): DesktopSourceKind? =
+        configs().firstOrNull { it.id == sourceId }?.kind
+
     /** Searching is YouTube Music's job, and only YouTube Music's. */
     suspend fun search(query: String, filter: SearchFilter): Result<List<SearchResult>> =
         DesktopSearchClient.search(query, filter)
@@ -197,8 +240,6 @@ internal object DesktopSourceRegistry {
         song: Song,
         quality: String?,
         excludedSourceId: String? = null,
-        /** Kept for call-site clarity; downloads no longer skip addons that set `allowDownloads: 0`. */
-        forDownload: Boolean = false,
     ): Result<DesktopStream> = runCatching {
         val available = playbackAdapters(quality)
         val moduleReference = DesktopModuleSource.parseTrack(song.videoId)
@@ -213,12 +254,20 @@ internal object DesktopSourceRegistry {
             else -> null
         }
 
-        // A row from an addon that is out of the walk only for policy — a download from one whose
-        // manifest says `allowDownloads: 0` — is looked up elsewhere, like any other track, rather
-        // than refused the way a disabled source's row is.
-        val heldBack = addonReference != null && owned == null &&
-            configs().any { it.id == addonReference.sourceId && it.enabled && it.isComplete }
-        if (!heldBack && (addonReference != null || moduleReference != null || song.videoId.startsWith("jiosaavn:"))) {
+        // A row whose own source is enabled and complete but is out of the walk
+        // because the ceiling in force excludes it is looked up elsewhere,
+        // like any other track, rather than refused the way a disabled
+        // source's row is. `allowDownloads` is not part of this decision: an
+        // explicit download saves a streaming-only addon's stream, so its rows
+        // are in the walk exactly like everyone else's.
+        val skippedByQuality = owned == null && when {
+            addonReference != null ->
+                configs().any { it.id == addonReference.sourceId && it.enabled && it.isComplete }
+            else -> false
+        }
+        if (!skippedByQuality && (addonReference != null || moduleReference != null ||
+                song.videoId.startsWith("jiosaavn:"))
+        ) {
             if (owned == null) error("The source for this track is disabled or no longer configured")
             // This path has nothing to race.
             DesktopTrackLog.log(
@@ -277,8 +326,13 @@ internal object DesktopSourceRegistry {
                     "No enabled music source is configured"
                 },
             )
-        // A held-back addon row carries that addon's id, which means nothing to YouTube.
-        val target = if (heldBack) youtube.match(song) ?: error("No other source has a copy of this track") else song
+        // A row whose own source was skipped by the ceiling carries that source's id, which
+        // means nothing to YouTube — so YouTube is asked to match it by metadata instead.
+        val target = if (skippedByQuality) {
+            youtube.match(song) ?: error("No other source has a copy of this track")
+        } else {
+            song
+        }
         youtube.resolve(target, quality).fold(
             onSuccess = { it ?: error("${youtube.descriptor.name} did not return an audio stream") },
             onFailure = { throw it },

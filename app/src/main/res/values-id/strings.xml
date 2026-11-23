@@ -84,6 +84,8 @@
     <string name="testing">Menguji…</string>
     <string name="connected">Terhubung</string>
     <string name="account_integrations">Akun &amp; integrasi</string>
+    <string name="youtube_premium_audio">YouTube Premium audio</string>
+    <string name="youtube_premium_audio_subtitle">I have Premium: stream the higher-quality ~256 kbps Opus instead of the standard 160 kbps</string>
     <string name="account_scrobbling">Akun &amp; scrobbling</string>
     <string name="rich_presence">Rich presence</string>
     <string name="scrobbling">Scrobbling</string>
@@ -169,6 +171,8 @@
     <string name="japanese">Jepang</string>
     <string name="russian">Rusia</string>
     <string name="chinese">China (Sederhana)</string>
+    <string name="chinese_simplified">China (Sederhana)</string>
+    <string name="chinese_traditional">China (Tradisional)</string>
     <string name="hebrew">Ibrani</string>
     <string name="italian">Italia</string>
     <string name="turkish">Turki</string>
@@ -958,6 +962,7 @@
     <string name="sort_date_added_toggle">Tanggal ditambahkan</string>
 
     <string name="sort_default">Urutan default</string>
+    <string name="sort_track_number">Track number</string>
 
     <string name="sort_library">Urutkan</string>
 
@@ -1223,7 +1228,6 @@
     <string name="source_needs_lossless_output">Perlu output lossless · gunakan perangkat yang mendukung lossless</string>
     <string name="source_needs_lossless_bt_codec">Perlu output lossless · Bluetooth memakai %1$s; gunakan perangkat yang mendukung lossless</string>
     <string name="source_needs_lossless_bt_unknown">Perlu output lossless · codec Bluetooth yang dipakai tidak bisa diketahui</string>
-    <string name="source_downloads_off">Hanya streaming</string>
     <string name="lossless_output_permission">Periksa codec Bluetooth</string>
     <string name="lossless_output_permission_detail">Izinkan Perangkat di sekitar agar headphone LDAC atau LHDC bisa membuka addon lossless</string>
     <string name="cached_songs">Lagu dalam cache</string>

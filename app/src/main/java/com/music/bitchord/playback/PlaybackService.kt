@@ -2856,7 +2856,7 @@ class PlaybackService : MediaLibraryService() {
         // The entry this track is read from now counts as played — the only
         // kind the Cached songs folder lists. See [AudioCache.Origin].
         mediaItem?.let { AudioCache.notePlayed(it.toSong(), it.localConfiguration?.uri) }
-        scheduleForeignCachePurge()
+        scheduleAnalysisCachePurge()
         mediaItem?.mediaId?.let { id ->
             resolveLocalBitrate(id, mediaItem)
         }
@@ -5258,34 +5258,36 @@ class PlaybackService : MediaLibraryService() {
         MediaWidget.refresh(this)
     }
 
-    private var foreignCachePurgeJob: Job? = null
+    private var analysisCachePurgeJob: Job? = null
 
     /**
-     * Lets go of whatever an addon or module served, and whatever Automix
-     * downloaded only to analyse, for tracks the queue has moved past — see
-     * [AudioCache.dropForeignEntries].
+     * Lets go of whatever Automix downloaded only to analyse, for tracks the
+     * queue has moved past — see [AudioCache.dropAnalysisOnlyEntries].
+     *
+     * Played addon and module audio is deliberately not part of this pass: it
+     * is the cache the next play reads from, and the LRU evictor bounds it.
      *
      * Delayed so a crossfade has finished with the outgoing track, and a
      * run of skips collapses into one pass. The tracks around the playhead
-     * are kept: they may still be read, seeked through or analysed.
+     * are kept: they may still be analysed.
      */
-    private fun scheduleForeignCachePurge() {
-        foreignCachePurgeJob?.cancel()
-        foreignCachePurgeJob = scope.launch {
-            delay(FOREIGN_CACHE_PURGE_DELAY_MS)
+    private fun scheduleAnalysisCachePurge() {
+        analysisCachePurgeJob?.cancel()
+        analysisCachePurgeJob = scope.launch {
+            delay(ANALYSIS_CACHE_PURGE_DELAY_MS)
             val exoPlayer = player ?: return@launch
             val keep = buildSet {
                 exoPlayer.currentMediaItem?.mediaId?.let(::add)
                 val current = exoPlayer.currentMediaItemIndex
                 if (current != C.INDEX_UNSET) {
-                    val window = (current - 1)..(current + FOREIGN_CACHE_KEEP_AHEAD)
+                    val window = (current - 1)..(current + ANALYSIS_CACHE_KEEP_AHEAD)
                     for (index in window) {
                         if (index in 0 until exoPlayer.mediaItemCount) add(exoPlayer.getMediaItemAt(index).mediaId)
                     }
                 }
                 spare?.currentMediaItem?.mediaId?.let(::add)
             }
-            AudioCache.dropForeignEntries(keep)
+            AudioCache.dropAnalysisOnlyEntries(keep)
         }
     }
 
@@ -8023,10 +8025,10 @@ class PlaybackService : MediaLibraryService() {
         const val MEDIA_PLAYLISTS_ID = "playlists"
         const val MEDIA_MORE_ID = "more"
         const val MEDIA_LIKED_ID = "liked"
-        /** See [scheduleForeignCachePurge]: comfortably past the longest crossfade. */
-        const val FOREIGN_CACHE_PURGE_DELAY_MS = 30_000L
-        /** How many upcoming tracks [scheduleForeignCachePurge] leaves alone for read-ahead and Automix. */
-        const val FOREIGN_CACHE_KEEP_AHEAD = 3
+        /** See [scheduleAnalysisCachePurge]: comfortably past the longest crossfade. */
+        const val ANALYSIS_CACHE_PURGE_DELAY_MS = 30_000L
+        /** How many upcoming tracks [scheduleAnalysisCachePurge] leaves alone for Automix. */
+        const val ANALYSIS_CACHE_KEEP_AHEAD = 3
         const val MEDIA_DOWNLOADS_ID = "downloads"
         const val MEDIA_LOCAL_MUSIC_ID = "local_music"
         const val MAX_AUTO_PAGE_SIZE = 50

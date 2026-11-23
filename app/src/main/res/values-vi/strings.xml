@@ -90,6 +90,8 @@
     <string name="testing">Đang kiểm tra…</string>
     <string name="connected">Đã kết nối</string>
     <string name="account_integrations">Tài khoản &amp; tích hợp</string>
+    <string name="youtube_premium_audio">YouTube Premium audio</string>
+    <string name="youtube_premium_audio_subtitle">I have Premium: stream the higher-quality ~256 kbps Opus instead of the standard 160 kbps</string>
     <string name="account_scrobbling">Tài khoản &amp; scrobbling</string>
     <string name="rich_presence">Trạng thái hoạt động (Rich presence)</string>
     <string name="scrobbling">Scrobbling</string>
@@ -191,6 +193,8 @@
     <string name="japanese">Tiếng Nhật</string>
     <string name="russian">Tiếng Nga</string>
     <string name="chinese">Tiếng Trung (Giản thể)</string>
+    <string name="chinese_simplified">Tiếng Trung (Giản thể)</string>
+    <string name="chinese_traditional">Tiếng Trung (Phồn thể)</string>
     <string name="hebrew">Tiếng Do Thái</string>
     <string name="italian">Tiếng Ý</string>
     <string name="turkish">Tiếng Thổ Nhĩ Kỳ</string>
@@ -602,6 +606,7 @@
     <string name="sort_date_added_toggle">Ngày thêm vào</string>
     <string name="sort_date_modified">Ngày sửa đổi (mới nhất trước)</string>
     <string name="sort_default">Thứ tự mặc định</string>
+    <string name="sort_track_number">Track number</string>
     <string name="sort_library">Sắp xếp</string>
     <string name="sort_songs">Sắp xếp bài hát</string>
     <string name="use_all_audio_folders">Dùng tất cả thư mục âm thanh</string>
@@ -1163,7 +1168,6 @@
     <string name="source_needs_lossless_output">Cần đầu ra lossless · hãy dùng thiết bị hỗ trợ lossless</string>
     <string name="source_needs_lossless_bt_codec">Cần đầu ra lossless · Bluetooth đang dùng %1$s; hãy dùng thiết bị hỗ trợ lossless</string>
     <string name="source_needs_lossless_bt_unknown">Cần đầu ra lossless · không xác định được codec Bluetooth đang dùng</string>
-    <string name="source_downloads_off">Chỉ phát trực tuyến</string>
     <string name="lossless_output_permission">Kiểm tra codec Bluetooth</string>
     <string name="lossless_output_permission_detail">Cho phép Thiết bị lân cận để tai nghe LDAC hoặc LHDC mở khóa addon lossless</string>
     <string name="cached_songs">Bài hát đã lưu bộ nhớ đệm</string>

@@ -1,5 +1,6 @@
 package com.music.bitchord.desktop
 
+import com.music.bitchord.data.sources.NextroSources
 import kotlinx.serialization.Serializable
 import java.net.URI
 
@@ -32,6 +33,20 @@ internal enum class DesktopSourceKind(
         needsServer = true,
         supportsLossless = true,
         rank = 0,
+    ),
+
+    /**
+     * nextro's High-Res: the gateway addon this build ships pointed at. The phone's
+     * `SourceKind.NEXTRO_HIGH_RES` is the same source over the same addon protocol.
+     */
+    NEXTRO_HIGH_RES(
+        label = NextroSources.HIGH_RES_LABEL,
+        detail = "Lossless FLAC through nextro's own addon gateway. Search and play " +
+            "without an account or a key.",
+        labels = listOf("FLAC", "Lossless"),
+        needsServer = false,
+        supportsLossless = true,
+        rank = 1,
     ),
 
     /** A module index seeded from a build-time URL. */
@@ -103,7 +118,8 @@ internal data class DesktopSourceConfig(
     val label: String = "",
     val baseUrl: String = "",
     val enabled: Boolean = true,
-    /** The addon manifest's `allowDownloads`, as last read. */
+    /** The addon manifest's `allowDownloads`, as last read. Recorded, not obeyed — an explicit
+     *  download saves a streaming-only addon's stream. See [DesktopAddonSource.refreshPolicy]. */
     val allowDownloads: Boolean = true,
 ) {
     val displayName: String

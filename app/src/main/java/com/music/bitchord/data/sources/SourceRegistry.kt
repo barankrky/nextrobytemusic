@@ -42,6 +42,13 @@ data class SourceConfig(
      * The addon's `allowDownloads`, as its manifest last said. Stored rather
      * than asked each time so the answer is there without a request — see
      * [checkValidLossless] for why that matters.
+     *
+     * Recorded rather than obeyed: `0` marks an addon streaming-only for
+     * clients that honour it, and an explicit download here still saves its
+     * stream — see [SourceRegistry.activeForDownload]. Kept because the
+     * manifest's answer is worth being able to read back, and because the
+     * switch a source reported is not something to lose on the way to a
+     * diagnostic.
      */
     val allowDownloads: Boolean = true,
     /**
@@ -75,7 +82,8 @@ data class SourceConfig(
 
 /**
  * The user's sources, always tried in the fixed order [SourceKind] declares:
- * their own addons first, then JioSaavn, then YouTube Music.
+ * their own addons first, then nextro's High-Res gateway, then JioSaavn, then
+ * YouTube Music.
  *
  * [SourceKind.YOUTUBE] is seeded on first run and cannot be deleted, only
  * disabled — it needs no configuration, so a "remove" would delete something
@@ -142,7 +150,20 @@ object SourceRegistry {
         // default is the policy: JioSaavn off, YouTube on.
         val seeded = stored + BUILT_IN_KINDS
             .filter { kind -> stored.none { it.kind == kind } }
-            .map { SourceConfig(kind = it) }
+            .map { kind ->
+                // The gateway is a built-in addon: it needs the address and the
+                // name the build was made with, not a blank config a user could
+                // not fill in from the sources screen.
+                if (kind == SourceKind.NEXTRO_HIGH_RES) {
+                    SourceConfig(
+                        kind = kind,
+                        baseUrl = NextroSources.HIGH_RES_URL,
+                        label = NextroSources.HIGH_RES_LABEL,
+                    )
+                } else {
+                    SourceConfig(kind = kind)
+                }
+            }
 
         // The retired built-in module is removed, while a custom module entered
         // by the user is preserved.
@@ -152,6 +173,11 @@ object SourceRegistry {
                 when {
                     config.kind == SourceKind.YOUTUBE && !config.enabled -> config.copy(enabled = true)
                     config.kind == SourceKind.JIOSAAVN && forceJioSaavnOff -> config.copy(enabled = false)
+                    config.kind == SourceKind.NEXTRO_HIGH_RES && config.baseUrl.isBlank() ->
+                        config.copy(
+                            baseUrl = NextroSources.HIGH_RES_URL,
+                            label = config.label.ifBlank { NextroSources.HIGH_RES_LABEL },
+                        )
                     else -> config
                 }
             }
@@ -193,11 +219,17 @@ object SourceRegistry {
             .mapNotNull { instances[it.id] }
 
     /**
-     * [active], minus the addons whose manifest said `allowDownloads: 0`. A
-     * download walks this instead, so the next source in line serves it.
+     * The sources a download may come from.
+     *
+     * Deliberately the same list as [active]: an addon's `allowDownloads: 0` is
+     * a statement about what the addon expects its streams used for, and an
+     * explicit download request here is allowed to save one anyway rather than
+     * quietly taking the next source in line. Kept as its own name so the
+     * download path still reads as its own decision, and so a future rule that
+     * *does* belong to downloads has somewhere to live that playback does not
+     * inherit.
      */
-    fun activeForDownload(): List<MusicSource> =
-        active().filter { config(it.configId)?.allowDownloads != false }
+    fun activeForDownload(): List<MusicSource> = active()
 
     /**
      * Records what an addon's manifest said about downloads and lossless
@@ -456,6 +488,14 @@ object SourceRegistry {
         // Same protocol, same implementation — the kinds differ only in rank.
         SourceKind.CUSTOM_MODULE -> ModuleSource(config)
         SourceKind.MODULE -> ModuleSource(config)
+        // The gateway speaks the addon protocol; the kind only makes it
+        // seeded, non-removable and ranked above JioSaavn and YouTube.
+        SourceKind.NEXTRO_HIGH_RES -> AddonSource(
+            config.copy(
+                baseUrl = config.baseUrl.ifBlank { NextroSources.HIGH_RES_URL },
+                label = config.label.ifBlank { NextroSources.HIGH_RES_LABEL },
+            ),
+        )
         SourceKind.JIOSAAVN -> JioSaavnSource(config)
         SourceKind.YOUTUBE -> YouTubeSource(config)
     }
@@ -501,7 +541,11 @@ object SourceRegistry {
             .build()
             .toString()
 
-    private val BUILT_IN_KINDS = listOf(SourceKind.JIOSAAVN, SourceKind.YOUTUBE)
+    private val BUILT_IN_KINDS = listOf(
+        SourceKind.NEXTRO_HIGH_RES,
+        SourceKind.JIOSAAVN,
+        SourceKind.YOUTUBE,
+    )
 
     private const val KEY_SOURCES = "sources"
     /** One-shot migration: existing users must explicitly opt in again. */

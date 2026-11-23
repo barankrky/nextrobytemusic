@@ -90,6 +90,8 @@
     <string name="testing">Test en cours…</string>
     <string name="connected">Connecté</string>
     <string name="account_integrations">Compte et intégrations</string>
+    <string name="youtube_premium_audio">YouTube Premium audio</string>
+    <string name="youtube_premium_audio_subtitle">I have Premium: stream the higher-quality ~256 kbps Opus instead of the standard 160 kbps</string>
     <string name="account_scrobbling">Compte et scrobbling</string>
     <string name="rich_presence">Présence enrichie</string>
     <string name="scrobbling">Scrobbling</string>
@@ -175,6 +177,8 @@
     <string name="japanese">Japonais</string>
     <string name="russian">Russe</string>
     <string name="chinese">Chinois (simplifié)</string>
+    <string name="chinese_simplified">Chinois (simplifié)</string>
+    <string name="chinese_traditional">Chinois (traditionnel)</string>
     <string name="hebrew">Hébreu</string>
     <string name="italian">Italien</string>
     <string name="turkish">Turc</string>
@@ -980,6 +984,7 @@
     <string name="sort_date_added_toggle">Date d\'ajout</string>
 
     <string name="sort_default">Ordre par défaut</string>
+    <string name="sort_track_number">Track number</string>
 
     <string name="sort_library">Trier</string>
 
@@ -1247,7 +1252,6 @@
     <string name="source_needs_lossless_output">Nécessite une sortie sans perte · utilisez un appareil compatible sans perte</string>
     <string name="source_needs_lossless_bt_codec">Nécessite une sortie sans perte · le Bluetooth utilise %1$s ; utilisez un appareil compatible sans perte</string>
     <string name="source_needs_lossless_bt_unknown">Nécessite une sortie sans perte · impossible de savoir quel codec Bluetooth est utilisé</string>
-    <string name="source_downloads_off">Streaming uniquement</string>
     <string name="lossless_output_permission">Vérifier le codec Bluetooth</string>
     <string name="lossless_output_permission_detail">Autorisez Appareils à proximité pour qu’un casque LDAC ou LHDC débloque les modules sans perte</string>
     <string name="cached_songs">Titres en cache</string>

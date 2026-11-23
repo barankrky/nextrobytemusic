@@ -92,6 +92,14 @@ data class Song(
     val localDateAddedSeconds: Long? = null,
     val localDateModifiedSeconds: Long? = null,
     /**
+     * The file's own track-number tag, when the row came from a local file.
+     *
+     * Lets a local album list in release order instead of whatever the library
+     * sort left standing, and lets its rows show the release's own numbers
+     * rather than their position in that list.
+     */
+    val trackNumber: Int? = null,
+    /**
      * What a non-YouTube source says it can serve this recording at, as one of
      * `LOSSLESS`, `HIGH` or `LOW` — null for every row that didn't come from
      * one.

@@ -92,6 +92,8 @@
     <string name="testing">Testowanie…</string>
     <string name="connected">Połączono</string>
     <string name="account_integrations">Konto i integracje</string>
+    <string name="youtube_premium_audio">YouTube Premium audio</string>
+    <string name="youtube_premium_audio_subtitle">I have Premium: stream the higher-quality ~256 kbps Opus instead of the standard 160 kbps</string>
     <string name="account_scrobbling">Konto i scrobbling</string>
     <string name="rich_presence">Status na Discordzie</string>
     <string name="scrobbling">Scrobbling</string>
@@ -177,6 +179,8 @@
     <string name="japanese">Japoński</string>
     <string name="russian">Rosyjski</string>
     <string name="chinese">Chiński (uproszczony)</string>
+    <string name="chinese_simplified">Chiński (uproszczony)</string>
+    <string name="chinese_traditional">Chiński (tradycyjny)</string>
     <string name="italian">Włoski</string>
     <string name="turkish">Turecki</string>
     <string name="thai">Tajski</string>
@@ -1017,6 +1021,7 @@
     <string name="sort_date_added_toggle">Data dodania</string>
 
     <string name="sort_default">Kolejność domyślna</string>
+    <string name="sort_track_number">Track number</string>
 
     <string name="sort_library">Sortuj</string>
 
@@ -1286,7 +1291,6 @@
     <string name="source_needs_lossless_output">Wymaga wyjścia bezstratnego · użyj urządzenia obsługującego dźwięk bezstratny</string>
     <string name="source_needs_lossless_bt_codec">Wymaga wyjścia bezstratnego · Bluetooth używa %1$s; użyj urządzenia obsługującego dźwięk bezstratny</string>
     <string name="source_needs_lossless_bt_unknown">Wymaga wyjścia bezstratnego · nie można ustalić, jaki kodek Bluetooth jest używany</string>
-    <string name="source_downloads_off">Tylko streaming</string>
     <string name="lossless_output_permission">Sprawdź kodek Bluetooth</string>
     <string name="lossless_output_permission_detail">Zezwól na Urządzenia w pobliżu, by słuchawki LDAC lub LHDC odblokowały dodatki bezstratne</string>
     <string name="cached_songs">Utwory w pamięci podręcznej</string>

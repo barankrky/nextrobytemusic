@@ -35,6 +35,7 @@ import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Icon
@@ -793,6 +794,7 @@ private fun SourceRow(
                 SourceKind.ADDON -> Icons.Rounded.Extension
                 SourceKind.CUSTOM_MODULE -> Icons.Rounded.Extension
                 SourceKind.MODULE -> Icons.Rounded.Extension
+                SourceKind.NEXTRO_HIGH_RES -> Icons.Rounded.HighQuality
                 SourceKind.JIOSAAVN -> Icons.Rounded.GraphicEq // or some other icon
                 SourceKind.YOUTUBE -> Icons.Rounded.PlayCircle
             },
@@ -898,9 +900,6 @@ private fun SourceConfig.statusLine(health: SourceHealth?): String = when {
     health is SourceHealth.Ok -> listOfNotNull(
         health.detail,
         kind.labels.take(3).joinToString(" · "),
-        // The addon's own `allowDownloads: 0`, said where the user will look
-        // when a download from it came from somewhere else.
-        stringResource(R.string.source_downloads_off).takeIf { !allowDownloads },
     ).joinToString(" · ")
     health is SourceHealth.Rejected -> health.reason
     health is SourceHealth.Unreachable -> stringResource(R.string.source_unreachable, health.reason)

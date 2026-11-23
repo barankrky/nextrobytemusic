@@ -101,6 +101,9 @@ internal class DesktopAudioDecoder : DesktopSampleSource {
 
     /** Live only while this decoder reads through windowed HTTP; see [open]. */
     private var rangeSource: DesktopRangeStream? = null
+
+    /** The cache entry this decoder is filling, released with the decoder. */
+    private var cacheEntry: DesktopAudioCacheStore.Entry? = null
     private var avio: AVIOContext? = null
     private var readPacket: Read_packet_Pointer_BytePointer_int? = null
     private var seekPacket: Seek_Pointer_long_int? = null
@@ -139,7 +142,11 @@ internal class DesktopAudioDecoder : DesktopSampleSource {
         windowed: Boolean = false,
         /** Explicit demuxer for an extensionless add-on manifest. */
         transport: String? = null,
+        /** The window cache this stream fills while it plays; implies [windowed]. */
+        cache: DesktopAudioCacheStore.Entry? = null,
     ): Result<Unit> = runCatching {
+        cacheEntry?.release()
+        cacheEntry = cache
         av_log_set_level(AV_LOG_ERROR)
         ensureNetwork()
 
@@ -158,7 +165,11 @@ internal class DesktopAudioDecoder : DesktopSampleSource {
         av_dict_set(options, "reconnect_delay_max", "5", 0)
         av_dict_set(options, "rw_timeout", "15000000", 0)
 
-        val opened = if (windowed) windowedContext(url, headers) else AVFormatContext(null)
+        val opened = if (windowed || cache != null) {
+            windowedContext(url, headers, cache)
+        } else {
+            AVFormatContext(null)
+        }
         // The code matters.
         val inputFormat: AVInputFormat? = when (transport?.lowercase()) {
             DesktopAddonStream.HLS -> av_find_input_format("hls")
@@ -267,8 +278,17 @@ internal class DesktopAudioDecoder : DesktopSampleSource {
      * A format context reading through [DesktopRangeStream] rather than through FFmpeg's own HTTP
      * client.
      */
-    private fun windowedContext(url: String, headers: Map<String, String>): AVFormatContext {
-        val source = DesktopRangeStream(url, headers)
+    private fun windowedContext(
+        url: String,
+        headers: Map<String, String>,
+        cache: DesktopAudioCacheStore.Entry?,
+    ): AVFormatContext {
+        val source = DesktopRangeStream(
+            url = url,
+            headers = headers,
+            windowBytes = cache?.windowBytes ?: DesktopAudioCache.WINDOW_BYTES,
+            cache = cache,
+        )
         val scratch = ByteArray(IO_BUFFER_BYTES)
         val read = object : Read_packet_Pointer_BytePointer_int() {
             override fun call(opaque: Pointer?, buffer: BytePointer?, size: Int): Int {
@@ -494,6 +514,8 @@ internal class DesktopAudioDecoder : DesktopSampleSource {
         readPacket = null
         seekPacket = null
         rangeSource = null
+        cacheEntry?.release()
+        cacheEntry = null
     }
 
     internal companion object {

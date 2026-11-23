@@ -8,6 +8,7 @@ import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.sources.DeviceCodecs
 import com.music.bitchord.data.sources.ModuleSource
+import com.music.bitchord.data.sources.NextroSources
 import com.music.bitchord.data.sources.MusicSource
 import com.music.bitchord.data.sources.SourceConfig
 import com.music.bitchord.data.sources.SourceHealth
@@ -604,6 +605,31 @@ class SourcesTest {
 
         assertFalse(sources.single { it.kind == SourceKind.JIOSAAVN }.enabled)
         assertTrue(sources.single { it.kind == SourceKind.YOUTUBE }.enabled)
+    }
+
+    @Test
+    fun `the gateway is a seeded built-in source`() {
+        val sources = SourceRegistry.sourcesForInit(emptyList(), forceJioSaavnOff = false)
+        val gateway = sources.single { it.kind == SourceKind.NEXTRO_HIGH_RES }
+
+        assertEquals(NextroSources.HIGH_RES_URL, gateway.baseUrl)
+        assertEquals(NextroSources.HIGH_RES_LABEL, gateway.label)
+        assertTrue(gateway.enabled)
+        assertTrue(gateway.isComplete)
+    }
+
+    @Test
+    fun `the gateway cannot be deleted`() {
+        val before = SourceRegistry.configs.value
+        try {
+            val gateway = SourceRegistry.sourcesForInit(emptyList(), forceJioSaavnOff = false)
+                .single { it.kind == SourceKind.NEXTRO_HIGH_RES }
+            SourceRegistry.add(gateway)
+            SourceRegistry.remove(gateway.id)
+            assertTrue(SourceRegistry.configs.value.any { it.id == gateway.id })
+        } finally {
+            SourceRegistry.configs.value = before
+        }
     }
 
     @Test
