@@ -950,6 +950,63 @@ class SourcesTest {
         )
     }
 
+    /**
+     * The cached-track path re-asks sources about a FLAC entry now, and the
+     * gateway behind it can improve without the track changing. A lossless
+     * answer is only an upgrade when it really is one: a 16/44.1 copy already
+     * playing must not be swapped for the same master another source lists.
+     */
+    @Test
+    fun `swaps lossless for a strictly better lossless copy`() {
+        val cd = StreamFormat(codec = "flac", bitDepth = 16, sampleRateHz = 44_100)
+        assertTrue(
+            SourceResolver.worthSwapping(
+                StreamFormat(codec = "flac", bitDepth = 24, sampleRateHz = 96_000),
+                cd,
+            ),
+        )
+        assertTrue(
+            SourceResolver.worthSwapping(
+                StreamFormat(codec = "flac", bitDepth = 24, sampleRateHz = 44_100),
+                cd,
+            ),
+        )
+    }
+
+    @Test
+    fun `refuses a lossless copy that is not better than the one playing`() {
+        val cd = StreamFormat(codec = "flac", bitDepth = 16, sampleRateHz = 44_100)
+        assertFalse(
+            SourceResolver.worthSwapping(
+                StreamFormat(codec = "flac", bitDepth = 16, sampleRateHz = 44_100),
+                cd,
+            ),
+        )
+        val hiRes = StreamFormat(codec = "flac", bitDepth = 24, sampleRateHz = 96_000)
+        assertFalse(
+            SourceResolver.worthSwapping(
+                StreamFormat(codec = "flac", bitDepth = 16, sampleRateHz = 48_000),
+                hiRes,
+            ),
+        )
+        // Anything unstated takes the CD defaults, so it cannot win on a guess.
+        assertFalse(SourceResolver.worthSwapping(StreamFormat(codec = "flac"), cd))
+    }
+
+    /**
+     * What [QualityUpgrade.adoptUnresolved] reads to decide whether a cached
+     * lossless copy still deserves a second look. CD quality is not the end of
+     * the ladder; Hi-Res is, because nothing configured can name a better one.
+     */
+    @Test
+    fun `a cached lossless stream is only final once it is hi-res`() {
+        assertFalse(StreamFormat(lossless = true, sampleRateHz = 44_100).isHiRes)
+        assertTrue(StreamFormat(lossless = true, sampleRateHz = 96_000).isHiRes)
+        assertTrue(StreamFormat(lossless = true, bitDepth = 24).isHiRes)
+        assertFalse(StreamFormat(lossless = false, sampleRateHz = 96_000).isHiRes)
+        assertFalse(StreamFormat(codec = "flac").isHiRes)
+    }
+
     // ---- Ranking two copies of the same recording ---------------------------
 
     /**

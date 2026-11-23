@@ -210,6 +210,16 @@ internal object DesktopMusicSources {
     suspend fun upgradeFor(song: Song, playing: DesktopStream?): DesktopStream? =
         DesktopSourceRegistry.upgradeFor(song, playing)
 
+    /**
+     * A copy better than the one playing from the cache, asked of every source that could hold
+     * one — including the source the cached file may have come from.
+     */
+    suspend fun betterCopyForCached(
+        song: Song,
+        playing: DesktopStreamFormat,
+        quality: String?,
+    ): DesktopStream? = DesktopSourceRegistry.betterCopyForCached(song, playing, quality)
+
     /** The quality rung in force. */
     fun ceiling(qualityOverride: String? = null): DesktopAudioQuality =
         DesktopSourceRegistry.ceiling(qualityOverride)

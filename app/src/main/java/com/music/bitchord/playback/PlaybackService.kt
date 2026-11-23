@@ -3909,7 +3909,7 @@ class PlaybackService : MediaLibraryService() {
             uri = uri,
             target = target,
             playingMime = mime,
-            playing = withContext(Dispatchers.IO) { cachedFloor(uri, format, durationSec) },
+            playing = withContext(Dispatchers.IO) { cachedFloor(uri, format, durationSec, mime) },
         )
     }
 
@@ -3938,17 +3938,24 @@ class PlaybackService : MediaLibraryService() {
      * The codec is deliberately not filled in. [StreamFormat.isLossless] reads
      * it, and a name carried over from the decoder's mime type would have to be
      * translated to be recognised — where being wrong means claiming a cached
-     * stream is already lossless and abandoning the upgrade. Only the bitrate
-     * is wanted here; [QualityUpgrade.adoptUnresolved] settles the lossless
-     * question separately, from the mime type itself.
+     * stream is already lossless and abandoning the upgrade. The decoder's mime
+     * type is passed as [StreamFormat.lossless] instead, and its sample rate is
+     * kept because that is what tells a CD-quality FLAC from a Hi-Res one —
+     * the question [QualityUpgrade.adoptUnresolved] now asks.
      */
-    private fun cachedFloor(uri: Uri, format: Format, durationSec: Int?): StreamFormat? {
+    private fun cachedFloor(uri: Uri, format: Format, durationSec: Int?, mime: String?): StreamFormat? {
+        val lossless = NerdStats.isLosslessMime(mime)
+        val rate = format.sampleRate.takeIf { it > 0 }
         format.bitrate.takeIf { it != Format.NO_VALUE && it > 0 }?.let {
-            return StreamFormat(kbps = it / 1000)
+            return StreamFormat(kbps = it / 1000, sampleRateHz = rate, lossless = lossless)
         }
         val seconds = durationSec?.takeIf { it > 0 } ?: return null
         val bytes = AudioCache.contentLengthOf(uri).takeIf { it > 0 } ?: return null
-        return StreamFormat(kbps = (bytes * 8 / seconds / 1000).toInt())
+        return StreamFormat(
+            kbps = (bytes * 8 / seconds / 1000).toInt(),
+            sampleRateHz = rate,
+            lossless = lossless,
+        )
     }
 
     /** Where the playing track stands, read off the player in one hop. */

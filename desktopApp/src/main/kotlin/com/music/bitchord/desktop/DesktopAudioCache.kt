@@ -29,8 +29,19 @@ import kotlin.io.path.name
  * one is fetched and written in the same pass. That means the first play fills
  * the cache without a second download, a seek only pays for the windows it
  * lands on, and a track stopped halfway resumes from its cached prefix next
- * time. A complete entry is played as an ordinary local file and never touches
- * the network.
+ * time. A complete entry is played as an ordinary local file; playback itself
+ * never waits for the network, though [DesktopAudioEngine] now asks the sources
+ * in the background whether a better copy exists and replaces the file when one
+ * does — see its `checkCachedCopy`.
+ *
+ * A logical track can hold more than one rendition on disk. The key names the
+ * track and the quality rung, not the URL that happened to fill it, and a
+ * source that returns a better file than the one already cached must not write
+ * its windows into the old entry: the reader would then serve a mix of two
+ * files, which is the same corruption Android's `#rendition` keys exist to
+ * prevent. Each distinct rendition therefore gets its own entry, and a small
+ * pointer file records which one the next [completeFile] should open. Entries
+ * the pointer has moved past stay until the budget evicts them.
  *
  * Only progressive addon/module streams are stored. An HLS or DASH manifest is
  * an index of segments, not audio; caching its bytes would keep a few KB of
@@ -60,12 +71,30 @@ internal object DesktopAudioCache {
         return "${song.videoId}|${quality.uppercase(Locale.ROOT)}|$atmos"
     }
 
+    /**
+     * The track and rung plus what makes this particular file that file.
+     *
+     * The URL is stripped of its query because stream tokens change on every resolve while the
+     * path names the same file; the format is kept because an addon that serves FLAC and AAC from
+     * one endpoint would otherwise share an entry between two different encodings.
+     */
+    private fun renditionKey(song: Song, quality: String, stream: DesktopStream): String =
+        listOf(
+            key(song, quality),
+            stream.sourceId.orEmpty(),
+            stream.format.summary,
+            stream.url.substringBefore('?'),
+        ).joinToString("|")
+
     /** The cache entry for [song] at [quality], if this stream is one worth keeping. */
     fun entryFor(song: Song, quality: String, stream: DesktopStream): DesktopAudioCacheStore.Entry? {
         if (!cacheable(stream)) return null
         // The cache is an optimisation: a full disk or an unreadable cache directory must leave
         // playback streaming as it did before, not fail the track that was about to play.
-        return runCatching { store.entryFor(key(song, quality)).also { it.acquire() } }
+        return runCatching {
+            store.entryFor(renditionKey(song, quality, stream), canonicalKey = key(song, quality))
+                .also { it.acquire() }
+        }
             .onFailure { DesktopTrackLog.log("audio cache unavailable: ${it.message}") }
             .getOrNull()
     }
@@ -77,7 +106,12 @@ internal object DesktopAudioCache {
     /** Downloads the whole track into the cache in the background, if it is not there already. */
     suspend fun prefetch(song: Song, quality: String, stream: DesktopStream) {
         if (!cacheable(stream)) return
-        store.prefetch(key(song, quality), stream.url, stream.headers)
+        store.prefetch(
+            renditionKey(song, quality, stream),
+            stream.url,
+            stream.headers,
+            canonicalKey = key(song, quality),
+        )
     }
 
     /** Forgets a cache entry that could not be decoded, so the next play fetches it again. */
@@ -168,7 +202,7 @@ internal class DesktopAudioCacheStore(
     /** One track's data and the windows of it that are known to be on disk. */
     inner class Entry internal constructor(
         val key: String,
-        private val base: String,
+        internal val base: String,
     ) {
         val data: Path = directory.resolve("$base.audio")
         val windowBytes: Int get() = this@DesktopAudioCacheStore.windowBytes
@@ -385,18 +419,34 @@ internal class DesktopAudioCacheStore(
     private val known = ConcurrentHashMap<String, Entry>()
     private val prefetching = ConcurrentHashMap.newKeySet<String>()
 
-    /** The entry for a logical track key, created on first use. */
-    fun entryFor(key: String): Entry {
+    /**
+     * The entry for a logical key, created on first use.
+     *
+     * [canonicalKey] is the track-and-rung identity and [key] is the rendition inside it. When
+     * they differ, the pointer for [canonicalKey] is moved to this rendition before anything is
+     * written, so the next ordinary play opens the copy that was just chosen rather than the one
+     * it replaced.
+     */
+    fun entryFor(key: String, canonicalKey: String? = null): Entry {
         val base = digest(key)
-        return known.computeIfAbsent(base) { Entry(key, base) }
+        val entry = known.computeIfAbsent(base) { Entry(key, base) }
+        if (canonicalKey != null) writePointer(canonicalKey, base)
+        return entry
     }
 
     /** A file found on disk, whose logical key is no longer in hand. */
     private fun entryForBase(base: String): Entry =
         known.computeIfAbsent(base) { Entry(base, base) }
 
-    /** A complete file for [key], or null. */
-    fun completeFile(key: String): Path? = entryFor(key).playbackFile()
+    /** The rendition the last write for [key] chose, or null when it has never been written. */
+    fun currentEntry(key: String): Entry? {
+        val base = readPointer(key) ?: return null
+        return entryForBase(base)
+    }
+
+    /** A complete file for [key]: the current rendition, or the plain key older builds wrote. */
+    fun completeFile(key: String): Path? =
+        currentEntry(key)?.playbackFile() ?: entryFor(key).playbackFile()
 
     /**
      * Fetches the whole track into the cache in one pass.
@@ -405,8 +455,13 @@ internal class DesktopAudioCacheStore(
      * leaves an index that the next playback can resume from, and the write
      * path is the same one [DesktopRangeStream] uses while it plays.
      */
-    suspend fun prefetch(key: String, url: String, headers: Map<String, String>) {
-        val entry = entryFor(key)
+    suspend fun prefetch(
+        key: String,
+        url: String,
+        headers: Map<String, String>,
+        canonicalKey: String? = null,
+    ) {
+        val entry = entryFor(key, canonicalKey)
         if (entry.playbackFile() != null) return
         if (!prefetching.add(key)) return
         entry.acquire()
@@ -450,10 +505,24 @@ internal class DesktopAudioCacheStore(
         }
     }
 
+    /**
+     * Forgets everything [key] can currently be served from.
+     *
+     * The pointer goes first: even if Windows refuses to delete a file the player still has open,
+     * the next [completeFile] must not be told that a rendition the caller has just rejected is
+     * still the one to play.
+     */
     fun invalidate(key: String) {
-        val entry = entryFor(key)
-        entry.deleteFiles()
-        known.remove(digest(key), entry)
+        val current = currentEntry(key)
+        deletePointer(key)
+        current?.let { entry ->
+            entry.deleteFiles()
+            known.remove(entry.base, entry)
+        }
+        entryFor(key).also { entry ->
+            entry.deleteFiles()
+            known.remove(digest(key), entry)
+        }
     }
 
     /** Everything in the cache, in bytes. */
@@ -501,6 +570,35 @@ internal class DesktopAudioCacheStore(
     private fun files(): List<Path> = runCatching {
         Files.list(directory).use { stream -> stream.filter(Files::isRegularFile).toList() }
     }.getOrDefault(emptyList())
+
+    /**
+     * The rendition a canonical key currently points at.
+     *
+     * A separate file rather than an in-memory map because the choice has to survive the process:
+     * the improved copy is what the next session should play, and re-resolving to find it again
+     * would defeat the cache.
+     */
+    private fun pointerFile(key: String): Path = directory.resolve("${digest(key)}.cur")
+
+    private fun readPointer(key: String): String? = runCatching {
+        Files.readString(pointerFile(key)).trim().takeIf(String::isNotBlank)
+    }.getOrNull()
+
+    private fun writePointer(key: String, base: String) {
+        runCatching {
+            Files.writeString(
+                pointerFile(key),
+                base,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE,
+            )
+        }
+    }
+
+    private fun deletePointer(key: String) {
+        runCatching { Files.deleteIfExists(pointerFile(key)) }
+    }
 
     private fun digest(value: String): String = MessageDigest.getInstance("SHA-256")
         .digest(value.toByteArray())

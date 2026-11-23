@@ -236,6 +236,9 @@ class DesktopPlaybackEngine(
             // sitting right there.
             val localUrl = DesktopDownloadManager.savedFile(song)?.toAbsolutePath()?.toString()
             val cachedFile = DesktopAudioCache.completeFile(song, audioQuality)
+            // A download is the listener's own file and a prefetched stream is already fresh; only
+            // the cache stands in for a resolve that may no longer be the best answer.
+            val playingFromCache = localUrl == null && cachedFile != null
             val prefetched = takePrefetched(song, excludedSourceId)
             val resolved = localUrl?.let { Result.success(DesktopLiveResolution(DesktopStream(it))) }
                 ?: cachedFile?.let { file ->
@@ -263,7 +266,11 @@ class DesktopPlaybackEngine(
                         onSuccess = { track ->
                             searchingBetterFor = song.videoId.takeIf { live.pendingSubstitute != null }
                             commands += Command.Start(track, playWhenReady)
-                            live.pendingSubstitute?.let { watchForUpgrade(song, it) }
+                            if (playingFromCache) {
+                                checkCachedCopy(song, track)
+                            } else {
+                                live.pendingSubstitute?.let { watchForUpgrade(song, it) }
+                            }
                         },
                         onFailure = { failure -> retryAfterFailure(song, playWhenReady, live.stream, failure) },
                     )
@@ -363,6 +370,44 @@ class DesktopPlaybackEngine(
                 // stops, never on a timer.
                 // Only this song's: by now the queue may have blended on to another whose own
                 // search is still running.
+                if (searchingBetterFor == song.videoId) searchingBetterFor = null
+                _state.update { if (it.song?.videoId == song.videoId) it.copy(searchingBetter = false) else it }
+            }
+        }
+    }
+
+    /**
+     * Asks the sources whether a track playing from the disk cache has a better copy upstream.
+     *
+     * A complete cache entry used to be the end of the question: the bytes on disk were trusted
+     * to be what the source would still answer, and the track played at whatever it had been
+     * written as for the rest of its life. The gateway in front of several upstreams can improve
+     * without the track or its cache key changing, so the cache is now a starting point rather
+     * than a verdict.
+     *
+     * The check runs beside playback and never blocks it; a source that fails, times out or
+     * answers with something worse is simply not taken. The chosen stream goes through [take] and
+     * [swapStream], the same path a mid-play upgrade from YouTube uses, and its bytes fill their
+     * own rendition entry rather than being written over the file being replaced.
+     */
+    private fun checkCachedCopy(song: Song, track: Track) {
+        val playing = track.decoder.measuredFormat ?: return
+        upgradeJob?.cancel()
+        searchingBetterFor = song.videoId
+        _state.update { if (it.song?.videoId == song.videoId) it.copy(searchingBetter = true) else it }
+        upgradeJob = scope.launch {
+            try {
+                DesktopTrackLog.log(
+                    "cache: looking for a better copy of '${song.title}' than " +
+                        playing.summary.ifBlank { "the cached rendition" },
+                )
+                val better = DesktopMusicSources.betterCopyForCached(song, playing, audioQuality)
+                if (take(song, better)) {
+                    DesktopTrackLog.log("cache: '${song.title}' switched to the better copy")
+                    return@launch
+                }
+                DesktopTrackLog.log("cache: no better copy of '${song.title}' was found")
+            } finally {
                 if (searchingBetterFor == song.videoId) searchingBetterFor = null
                 _state.update { if (it.song?.videoId == song.videoId) it.copy(searchingBetter = false) else it }
             }

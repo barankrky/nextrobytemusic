@@ -442,11 +442,18 @@ internal object DesktopSourceRegistry {
         return scope.async { withTimeoutOrNull(UPGRADE_TIMEOUT_MS) { firstSubstitute(better, song, quality) } }
     }
 
-    /** The first usable stream from any of [sources], each asked in parallel. */
+    /**
+     * The first usable stream from any of [sources], each asked in parallel.
+     *
+     * [accept] is the bar an answer has to clear to end the race. The default takes
+     * anything playable, which is what the latency-critical substitution path wants; the
+     * upgrade path asks for a copy that is actually better than what is playing.
+     */
     private suspend fun firstSubstitute(
         sources: List<SourceAdapter>,
         song: Song,
         quality: String?,
+        accept: (DesktopStream) -> Boolean = { true },
     ): DesktopStream? = coroutineScope {
         val running = sources
             .map { source ->
@@ -459,7 +466,7 @@ internal object DesktopSourceRegistry {
                     running.forEach { candidate -> candidate.onAwait { candidate } }
                 }
                 running -= done
-                done.await()?.let { return@coroutineScope it }
+                done.await()?.takeIf(accept)?.let { return@coroutineScope it }
             }
             null
         } finally {
@@ -467,9 +474,58 @@ internal object DesktopSourceRegistry {
         }
     }
 
-    /** Whether a copy found after the fact is worth interrupting playback for. */
+    /**
+     * A copy of [song] better than the one playing from the disk cache, or null.
+     *
+     * Unlike [upgradeFor] this asks every non-YouTube source, including the one that may have
+     * produced the cached file. The cache records no provenance, and the gateway fronts several
+     * upstreams: a copy that was the best it had when the file was written can be beaten by an
+     * answer it gives today, which a "do not ask the source already serving" rule would never
+     * hear. YouTube is left out because it is the fallback recording, not a better copy of the
+     * one a source matched.
+     *
+     * Runs only while the track plays; the cached audio is already coming out, so every source
+     * gets its full patience and a slow answer still has a use.
+     */
+    suspend fun betterCopyForCached(
+        song: Song,
+        playing: DesktopStreamFormat,
+        quality: String?,
+    ): DesktopStream? {
+        // Same reason as [upgradeFor]: a track asked about once this session must not answer from
+        // that memory when the point of this pass is to hear today's catalogue.
+        DesktopAddonSource.clearCompletedTrackCalls()
+        val candidates = playbackAdapters(quality).filter {
+            it.config.kind != DesktopSourceKind.YOUTUBE
+        }
+        if (candidates.isEmpty()) return null
+        DesktopTrackLog.log(
+            "cache: asking ${candidates.joinToString { it.descriptor.name }} for a better copy of " +
+                "'${song.title}' (playing ${playing.summary.ifBlank { "an unmeasured format" }})",
+        )
+        return withTimeoutOrNull(CACHE_UPGRADE_TIMEOUT_MS) {
+            firstSubstitute(candidates, song, quality) { candidate ->
+                worthSwapping(candidate.format, playing)
+            }
+        }
+    }
+
+    /**
+     * Whether a copy found after the fact is worth interrupting playback for.
+     *
+     * Lossless over lossy always is; a lossless copy over another lossless one only when it is
+     * actually better — more bit depth, or the same depth at a higher rate. Treating any lossless
+     * answer as an upgrade made the cached-track check swap a 16-bit/44.1kHz FLAC for the same
+     * master from another row, paying a seam in the audio for nothing.
+     */
     internal fun worthSwapping(candidate: DesktopStreamFormat, playing: DesktopStreamFormat?): Boolean {
-        if (candidate.isLossless) return true
+        if (playing?.isDolbyAtmos == true && !candidate.isDolbyAtmos) return false
+        if (candidate.isDolbyAtmos) return playing?.isDolbyAtmos != true
+        if (candidate.isLossless) {
+            if (playing?.isLossless != true) return true
+            return candidate.losslessRank > playing.losslessRank
+        }
+        if (playing?.isLossless == true) return false
         val gain = (candidate.kbps ?: return false) - (playing?.kbps ?: return false)
         return gain >= UPGRADE_MIN_GAIN_KBPS
     }
@@ -599,6 +655,15 @@ internal object DesktopSourceRegistry {
 
     /** How long the live path waits on the sources before starting on whatever YouTube has. */
     private const val SUBSTITUTE_TIMEOUT_MS = 20_000L
+
+    /**
+     * How long a cached play waits for a source to say it has something better.
+     *
+     * Generous next to [SUBSTITUTE_TIMEOUT_MS] because nothing is waiting on it: the cached file
+     * is already playing, so a slow source still has a listener to improve the rest of the track
+     * for.
+     */
+    private const val CACHE_UPGRADE_TIMEOUT_MS = 30_000L
 
     /**
      * The patient second look's budget. Longer than the race's, because nobody is waiting on the

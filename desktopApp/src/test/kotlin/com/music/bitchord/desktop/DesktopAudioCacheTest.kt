@@ -70,6 +70,46 @@ class DesktopAudioCacheTest {
         assertNull(store.completeFile(high))
     }
 
+    /**
+     * The cached-track check replaces a 16/44.1 file with a Hi-Res one without
+     * the track or rung changing. They must not share an entry: the reader
+     * serves a complete entry's windows straight from disk, so writing the new
+     * file's windows over the old index would leave a mix of two renderings.
+     */
+    @Test
+    fun `a better rendition becomes the one the next play opens`() {
+        val store = store()
+        val canonical = "addon:gateway:track-1|LOSSLESS|stereo"
+        val cd = store.entryFor("$canonical|gateway|FLAC|44.1 kHz|/a.flac", canonicalKey = canonical)
+        cd.writeWindow(0, byteArrayOf(1, 2, 3, 4), totalLength = 4)
+        assertContentEquals(
+            byteArrayOf(1, 2, 3, 4),
+            Files.readAllBytes(assertNotNull(store.completeFile(canonical))),
+        )
+
+        val hiRes = store.entryFor("$canonical|gateway|FLAC|24-bit|96 kHz|/b.flac", canonicalKey = canonical)
+        hiRes.writeWindow(0, byteArrayOf(9, 8, 7, 6), totalLength = 4)
+
+        assertContentEquals(
+            byteArrayOf(9, 8, 7, 6),
+            Files.readAllBytes(assertNotNull(store.completeFile(canonical))),
+        )
+        // The replaced rendition is still its own file, untouched by the new one.
+        assertContentEquals(byteArrayOf(1, 2, 3, 4), Files.readAllBytes(cd.data))
+    }
+
+    @Test
+    fun `invalidating forgets the rendition the pointer chose`() {
+        val store = store()
+        val canonical = "addon:gateway:track-9|LOSSLESS|stereo"
+        store.entryFor("$canonical|gateway|FLAC|44.1 kHz|/a.flac", canonicalKey = canonical)
+            .writeWindow(0, byteArrayOf(1, 2, 3, 4), totalLength = 4)
+
+        assertNotNull(store.completeFile(canonical))
+        store.invalidate(canonical)
+        assertNull(store.completeFile(canonical))
+    }
+
     @Test
     fun `the coldest entry is evicted when the budget is crossed`() {
         val store = store(limit = 7)

@@ -114,6 +114,17 @@ data class DesktopStreamFormat(
     val isHiQuality: Boolean
         get() = !isLossless && (kbps ?: 0) >= HI_QUALITY_KBPS
 
+    /**
+     * How good a lossless rendition is, for choosing between two of them.
+     *
+     * Bit depth first, then sample rate: 24-bit/44.1kHz is a better master than 16-bit/96kHz, and
+     * treating every lossless answer as an upgrade made a cached FLAC get swapped for the same
+     * FLAC another row happened to list. Unknown fields take the CD defaults, which keeps an
+     * undeclared copy from beating a measured one.
+     */
+    internal val losslessRank: Int
+        get() = (bitDepth ?: 16) * 1_000_000 + (sampleRateHz ?: 44_100)
+
     /** The rate to state on screen. */
     private val statedKbps: Int?
         get() = when {

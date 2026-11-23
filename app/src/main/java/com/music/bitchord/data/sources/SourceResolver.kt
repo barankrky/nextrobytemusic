@@ -663,7 +663,18 @@ object SourceResolver {
         // so this is the belt to that braces — it also covers the late answer
         // that arrives from a pass started before the Atmos stream landed.
         if (playing?.isDolbyAtmos == true && !candidate.isDolbyAtmos) return false
-        if (candidate.isLossless == true || candidate.isDolbyAtmos) return true
+        if (candidate.isDolbyAtmos) return playing?.isDolbyAtmos != true
+        if (candidate.isLossless == true) {
+            if (playing?.isLossless != true) return true
+            // Lossless over lossless is only an upgrade when the copy really is
+            // better. The cached-track path now re-asks sources about a FLAC
+            // entry, and treating every lossless answer as an upgrade made it
+            // swap a 16-bit/44.1kHz copy for the same master from another row —
+            // a seam in the audio for nothing. [losslessRank] fills unknown
+            // fields with CD defaults, so an undeclared copy cannot win either.
+            return candidate.losslessRank > playing.losslessRank
+        }
+        if (playing?.isLossless == true) return false
         val gain = (candidate.kbps ?: return false) - (playing?.kbps ?: return false)
         return gain >= UPGRADE_MIN_GAIN_KBPS
     }

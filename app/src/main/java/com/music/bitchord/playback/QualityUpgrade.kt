@@ -310,9 +310,13 @@ object QualityUpgrade {
      * @param playingMime what the *decoder* says about the bytes it is being
      *   fed, and it must be this track's — see
      *   [PlaybackService.audioFormatFor][com.music.bitchord.playback.PlaybackService].
-     *   The one thing worth not doing here is hunting a lossless copy of a
-     *   track that is already playing one, which is exactly what a cache entry
-     *   written by a previous session's successful upgrade holds.
+     *   The one thing worth not doing here is hunting a *better* copy of a track
+     *   that already holds the best one this app can name. Lossless used to be
+     *   that line, which made a cache entry written by a previous session's
+     *   successful FLAC upgrade final — even when the same gateway had since
+     *   started holding a 24-bit/96kHz master of the same track. The line is
+     *   now Hi-Res (see [StreamFormat.isHiRes]); an ordinary CD-quality FLAC
+     *   still gets asked about.
      * @param playing how good those bytes are, for
      *   [SourceResolver.worthSwapping] to weigh candidates against — measured
      *   off the decoder or off the cache entry's own size, never from a
@@ -358,7 +362,7 @@ object QualityUpgrade {
         // entry here at all: [pending] keeps [couldStillUpgrade] off it for
         // exactly as long as the question is genuinely open, and marking it
         // answered before it has been asked is what made a skip permanent.
-        if (NerdStats.isLosslessMime(playingMime)) {
+        if (NerdStats.isLosslessMime(playingMime) && playing?.isHiRes == true) {
             asked += mediaId
             // The codec is named because this line is a dead end — the track is
             // in [asked] by now and will never be offered an upgrade again — and
@@ -366,7 +370,7 @@ object QualityUpgrade {
             // reached on the previous track's format.
             TrackLog.d(
                 TAG,
-                "'${target.title}' is already playing $playingMime from cache; no second look needed",
+                "'${target.title}' is already playing ${playing?.summary} from cache; no second look needed",
                 about = mediaId,
             )
             return false
