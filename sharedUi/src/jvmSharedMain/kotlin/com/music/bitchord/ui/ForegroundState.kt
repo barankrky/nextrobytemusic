@@ -11,6 +11,14 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 
 /**
+ * The lifecycle state that counts as being on screen.
+ *
+ * Not one state for both targets: Android is RESUMED, desktop is STARTED. See
+ * the per-target actuals for why, and [rememberIsForeground] for what reads it.
+ */
+internal expect val foregroundLifecycleFloor: Lifecycle.State
+
+/**
  * Whether the app is actually on screen.
  *
  * The distinction this exists to draw is one Compose does not draw on its own:
@@ -25,9 +33,14 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
  * back. Gating on this is the difference between "cheap while visible" and
  * "cheap", and it costs nothing on screen.
  *
- * RESUMED rather than STARTED: a paused-but-visible activity is one behind a
- * dialog or in the background half of split screen, which is not a case worth
- * animating for either.
+ * What counts as being on screen is platform-specific — see
+ * [foregroundLifecycleFloor]. On Android it is RESUMED: a paused-but-visible
+ * activity is one behind a dialog or in the background half of split screen,
+ * which is not a case worth animating for either. On desktop it is STARTED,
+ * because Compose's window container reports a visible but unfocused window as
+ * STARTED and only a focused one as RESUMED; gating on RESUMED there froze the
+ * lyrics the moment another window was clicked, with the panel still in view
+ * and the track still playing.
  *
  * Playback itself is not gated on this and must not be — audio comes from
  * [com.music.bitchord.playback.PlaybackService], which is a foreground service
@@ -37,14 +50,14 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 fun rememberIsForeground(): Boolean {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var foreground by remember(lifecycle) {
-        mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+        mutableStateOf(lifecycle.currentState.isAtLeast(foregroundLifecycleFloor))
     }
     DisposableEffect(lifecycle) {
         // Every event rather than ON_RESUME/ON_PAUSE alone: the state is read
         // back off the lifecycle instead of inferred from which event arrived,
         // so there is no transition this can be left out of step by.
         val observer = LifecycleEventObserver { owner, _ ->
-            foreground = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+            foreground = owner.lifecycle.currentState.isAtLeast(foregroundLifecycleFloor)
         }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
