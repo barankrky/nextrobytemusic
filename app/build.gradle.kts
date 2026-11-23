@@ -1,5 +1,6 @@
 import java.util.Properties
 import java.io.FileInputStream
+import org.gradle.api.tasks.testing.Test
 
 plugins {
     id("com.android.application")
@@ -223,6 +224,35 @@ kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
+}
+
+/*
+ * Live network tests (see LiveNetworkTests.kt in the test sources) are skipped
+ * by default and run only when asked:
+ *
+ *     ./gradlew testDevDebugUnitTest -PincludeLiveNetworkTests
+ *
+ * The default is what matters for CI. The Genius live case reaches the real
+ * genius.com, which answers GitHub's runner IPs with a block or a captcha: it
+ * failed on every Check run of this branch's history while passing on a
+ * developer machine, so the Android job could never go green for a reason that
+ * had nothing to do with the code under test. A test that depends on the
+ * runner's egress IP cannot gate a merge.
+ *
+ * The flag is copied into the test JVM as a system property because test code
+ * reads it with System.getProperty; Gradle's model is not visible there. A bare
+ * `-PincludeLiveNetworkTests` (the way anyone types it) reaches the build as an
+ * empty string, not as "true", so presence counts as opt-in and only an explicit
+ * `=false` turns it back off.
+ */
+tasks.withType<Test>().configureEach {
+    systemProperty(
+        "includeLiveNetworkTests",
+        providers.gradleProperty("includeLiveNetworkTests")
+            .map { it.isEmpty() || it.toBoolean() }
+            .getOrElse(false)
+            .toString(),
+    )
 }
 
 /*
