@@ -53,6 +53,9 @@ fun main() {
     StreamResolver.maxKbps = {
         DesktopStreamClient.ceiling.get() ?: DesktopSourceRegistry.ceiling(null).maxKbps
     }
+    // The phone reads its own stored toggle here; the desktop's lives in
+    // [DesktopYoutubePremium] because there is no AppSettings on this target.
+    StreamResolver.premiumAudio = { DesktopYoutubePremium.enabled.value }
     InnerTubeXResolver.init(
         filesDir = DesktopMediaCache.directory.toFile(),
         store = DesktopInnerTubeXStore,

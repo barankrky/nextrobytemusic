@@ -762,6 +762,7 @@ fun NextrobyteDesktopApp() {
         sessionRevision++
     }
     var audioQuality by remember { mutableStateOf(persistence.audioQuality()) }
+    val youtubePremiumAudio by DesktopYoutubePremium.enabled.collectAsState()
     var sourceConfigs by remember { mutableStateOf(persistence.sourceConfigs()) }
     var sourceStatus by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     val youtubeSourceEnabled = sourceConfigs.any {
@@ -3685,6 +3686,8 @@ fun NextrobyteDesktopApp() {
                                         audioQuality = it
                                         persistence.saveAudioQuality(it)
                                     },
+                                    youtubePremiumAudio = youtubePremiumAudio,
+                                    onYoutubePremiumAudioChange = DesktopYoutubePremium::setEnabled,
                                     sleepTimerMinutes = sleepTimerMinutes,
                                     sleepAfterTrack = sleepAfterTrack,
                                     sleepRemainingMs = sleepRemainingMs,
@@ -5563,6 +5566,8 @@ private fun DesktopSettingsScreen(
     onDownloadQualityChange: (String) -> Unit,
     audioQuality: DesktopAudioQuality,
     onAudioQualityChange: (DesktopAudioQuality) -> Unit,
+    youtubePremiumAudio: Boolean,
+    onYoutubePremiumAudioChange: (Boolean) -> Unit,
     sleepTimerMinutes: Int?,
     sleepAfterTrack: Boolean,
     sleepRemainingMs: Long?,
@@ -6069,6 +6074,18 @@ private fun DesktopSettingsScreen(
                         )
                     }
                     }
+                    // Only the YouTube ladder changes here; an addon or JioSaavn answer already
+                    // comes from the rung above. The flag is the user's claim about their
+                    // account, not something the resolver can verify.
+                    SettingsToggle(
+                        DesktopStrings["youtube_premium_audio", "YouTube Premium audio"],
+                        DesktopStrings[
+                            "youtube_premium_audio_subtitle",
+                            "I have Premium: stream the higher-quality ~256 kbps Opus instead of the standard 160 kbps",
+                        ],
+                        youtubePremiumAudio,
+                        onYoutubePremiumAudioChange,
+                    )
                 }
             }
             if (section == DesktopSettingsSection.LISTEN_TOGETHER) item {
