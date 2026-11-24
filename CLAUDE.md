@@ -170,7 +170,7 @@ not put a desktop-only string into the Android catalogues.
 
 ## Versioning and releases
 
-- Android: `versionName = "0.1_beta"`, `versionCode = 1` in `app/build.gradle.kts`. `betaSuffix` marks
+- Android: `versionName = "0.2_beta"`, `versionCode = 2` in `app/build.gradle.kts`. `betaSuffix` marks
   sideloaded test builds; blanking it is what turns a beta into a release (the update checker treats
   `1.6.1-beta2` as older than `1.6.1`).
 - Desktop: version comes from `-Pbitchord.version=` (CI strips the `v` from the tag), baked in as the
