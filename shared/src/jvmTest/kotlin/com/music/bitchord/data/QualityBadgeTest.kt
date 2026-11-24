@@ -149,4 +149,45 @@ class QualityBadgeTest {
         // intent label.
         assertNull(state(opus160, isLoading = true).badge)
     }
+
+    @Test
+    fun `a settled surface sees the measured stream's label while a race is in flight`() {
+        val racing = state(aac320, stillRacing = true)
+        // The player still says "high quality, upgrading"; a settled surface
+        // (the Discord card) asks for the stream's own label instead.
+        assertEquals(QualityBadge.UPGRADING_HI_QUALITY, racing.badge)
+        assertEquals(QualityBadge.HIGH_QUALITY, racing.settledBadge)
+
+        // Nothing measured yet: there is no settled label to keep.
+        val buffering = state(nerdStats = null, isLoading = true)
+        assertEquals(QualityBadge.UPGRADING, buffering.badge)
+        assertNull(buffering.settledBadge)
+    }
+
+    @Test
+    fun `a state with no upgrade in flight settles to its own badge`() {
+        val cases = listOf(
+            flacHiRes to AudioQuality.LOSSLESS,
+            flacCd to AudioQuality.LOSSLESS,
+            atmos to AudioQuality.LOSSLESS,
+            aac320 to AudioQuality.LOSSLESS,
+            aac160 to AudioQuality.MEDIUM,
+            opus64 to AudioQuality.LOW,
+            opus160 to AudioQuality.LOSSLESS,
+        )
+        cases.forEach { (snapshot, rung) ->
+            val value = state(snapshot, effectiveQuality = rung)
+            assertEquals(value.badge, value.settledBadge)
+        }
+    }
+
+    @Test
+    fun `a settled lossless stream keeps its new label even if the race flag has not cleared`() {
+        // The measured format can land before the search reports done; the
+        // settled view must already read the new rendition's label.
+        assertEquals(
+            QualityBadge.HI_RES_LOSSLESS,
+            state(flacHiRes, stillRacing = true).settledBadge,
+        )
+    }
 }

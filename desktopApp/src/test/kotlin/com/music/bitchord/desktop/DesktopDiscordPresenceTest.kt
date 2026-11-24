@@ -173,25 +173,40 @@ class DesktopDiscordPresenceTest {
     // ── One test per player badge state ──────────────────────────────────
 
     @Test
-    fun `an unmeasured lossless request shows the player's upgrading label`() {
+    fun `an unmeasured lossless request leaves the quality segment off the card`() {
         val quality = qualityFor(format = null, isLoading = true)
+        // The player still says "upgrading"; the card must not.
         assertEquals(QualityBadge.UPGRADING, quality.badge)
-        assertEquals("🎧 Kalite yükseltiliyor", lineFor(null, quality, "tr"))
-        assertEquals("🎧 Upgrading quality", lineFor(null, quality, "en"))
+        assertNull(quality.settledBadge)
+        assertNull(lineFor(null, quality, "tr"))
+        assertNull(lineFor(null, quality, "en"))
+        // With no settled quality and no measured format the album is the line,
+        // not an in-between word and not a dangling separator.
+        assertEquals("An Album", discordThirdLine(null, quality, showQuality = true, album = "An Album"))
     }
 
     @Test
-    fun `a lossless race over a 320k stream shows high quality upgrading`() {
+    fun `a lossless race over a 320k stream keeps the settled high quality line`() {
         val quality = qualityFor(aac320, stillRacing = true)
+        // The player's own badge is the in-flight one; the card settles it.
         assertEquals(QualityBadge.UPGRADING_HI_QUALITY, quality.badge)
-        assertEquals(
-            "🎧 Yüksek kalite, yükseltiliyor · AAC · 320 kbps · 44.1 kHz",
-            lineFor(aac320, quality, "tr"),
-        )
-        assertEquals(
-            "🎧 High quality, upgrading · AAC · 320 kbps · 44.1 kHz",
-            lineFor(aac320, quality, "en"),
-        )
+        assertEquals(QualityBadge.HIGH_QUALITY, quality.settledBadge)
+        val turkish = assertNotNull(lineFor(aac320, quality, "tr"))
+        val english = assertNotNull(lineFor(aac320, quality, "en"))
+        assertEquals("🎧 Yüksek kalite · AAC · 320 kbps · 44.1 kHz", turkish)
+        assertEquals("🎧 High quality · AAC · 320 kbps · 44.1 kHz", english)
+        assertFalse(turkish.contains("yükseltiliyor", ignoreCase = true), turkish)
+        assertFalse(english.contains("upgrading", ignoreCase = true), english)
+    }
+
+    @Test
+    fun `a race over a stream with no settled badge keeps only its measured specs`() {
+        val quality = qualityFor(opus160, stillRacing = true)
+        assertEquals(QualityBadge.UPGRADING, quality.badge)
+        assertNull(quality.settledBadge)
+        // No settled quality, but the stream that is playing still has facts.
+        assertEquals("Opus · 160 kbps · 48 kHz", lineFor(opus160, quality, "tr"))
+        assertEquals("Opus · 160 kbps · 48 kHz", lineFor(opus160, quality, "en"))
     }
 
     @Test
@@ -273,10 +288,8 @@ class DesktopDiscordPresenceTest {
     }
 
     @Test
-    fun `the card's badge is the player's label for the same decided state`() {
+    fun `the card's badge is the player's label for the same settled state`() {
         val cases = listOf(
-            null to qualityFor(null, isLoading = true),
-            aac320 to qualityFor(aac320, isLoading = true),
             flacHiRes to qualityFor(flacHiRes),
             flacCd to qualityFor(flacCd),
             atmos to qualityFor(atmos),
@@ -288,7 +301,7 @@ class DesktopDiscordPresenceTest {
             val player = if (tag == "en") playerStrings("en") else playerStrings("en") + playerStrings(tag)
             val desktop = if (tag == "en") desktopStrings("en") else desktopStrings("en") + desktopStrings(tag)
             cases.forEach { (format, quality) ->
-                val badge = assertNotNull(quality.badge, "$tag ${quality.effectiveQuality}")
+                val badge = assertNotNull(quality.settledBadge, "$tag ${quality.effectiveQuality}")
                 // The player's Dolby badge is the one label it still holds as a
                 // literal rather than a catalogue entry.
                 val playerText = if (badge == QualityBadge.DOLBY_ATMOS) {
@@ -439,12 +452,41 @@ class DesktopDiscordPresenceTest {
         // Loading with a measurement in hand keeps the measured label; only a
         // race, or loading before anything is measured, says upgrading.
         assertEquals(QualityBadge.HIGH_QUALITY, quality.badge)
+        assertEquals(QualityBadge.HIGH_QUALITY, quality.settledBadge)
         assertEquals("audio/aac", quality.nerdStats?.mimeType)
         assertEquals(320, quality.nerdStats?.bitrateKbps)
 
         // searchingBetter is the window's source for NerdStats.racingLossless.
         val racing = state.copy(isLoading = false, searchingBetter = true)
-        assertEquals(QualityBadge.UPGRADING_HI_QUALITY, desktopQualityBadgeState(racing).badge)
+        val racingQuality = desktopQualityBadgeState(racing)
+        // The player still says "upgrading"; the card asks for the settled view.
+        assertEquals(QualityBadge.UPGRADING_HI_QUALITY, racingQuality.badge)
+        assertEquals(QualityBadge.HIGH_QUALITY, racingQuality.settledBadge)
+    }
+
+    @Test
+    fun `a settled race or a new format asks for a republish while a position tick does not`() {
+        val racing = DesktopPlaybackState(
+            song = song,
+            isPlaying = true,
+            streamFormat = aac320,
+            searchingBetter = true,
+        )
+        val settled = racing.copy(searchingBetter = false)
+        val settledInputs = DiscordCardInputs.of(settled, 1f)
+
+        // The stuck-card bug: the race ending without a new format never
+        // reached the RPC, so its last snapshot kept saying "upgrading".
+        assertNotEquals(DiscordCardInputs.of(racing, 1f), settledInputs)
+        // A real upgrade always did, and still does.
+        assertNotEquals(settledInputs, DiscordCardInputs.of(settled.copy(streamFormat = flacHiRes), 1f))
+        // Buffering is part of the snapshot the RPC rebuilds from.
+        assertNotEquals(settledInputs, DiscordCardInputs.of(settled.copy(isLoading = true), 1f))
+        // A playhead tick is not a Discord frame.
+        assertEquals(
+            settledInputs,
+            DiscordCardInputs.of(settled.copy(positionMs = 99_000L, volume = 0.4f), 1f),
+        )
     }
 
     // ── What the local socket is told ────────────────────────────────────
@@ -490,6 +532,34 @@ class DesktopDiscordPresenceTest {
         assertEquals(
             "An Album",
             off["assets"]?.jsonObject?.get("large_text")?.jsonPrimitive?.content,
+        )
+    }
+
+    @Test
+    fun `the socket never receives an upgrade label while a race or a load is in flight`() {
+        val racing = qualityFor(aac320, stillRacing = true)
+        val on = presence(
+            format = aac320,
+            quality = racing,
+            settings = DiscordCardSettings(showAudioQuality = true),
+            label = { badge -> qualityBadgeLabel(badge, desktopLabel("tr")) },
+        ).ipcActivity()
+        val largeText = on["assets"]?.jsonObject?.get("large_text")?.jsonPrimitive?.content
+        assertEquals("🎧 Yüksek kalite · AAC · 320 kbps · 44.1 kHz", largeText)
+        assertFalse(largeText.orEmpty().contains("yükseltiliyor", ignoreCase = true), "no in-flight word")
+
+        val loading = qualityFor(null, isLoading = true)
+        val starting = presence(
+            format = null,
+            quality = loading,
+            settings = DiscordCardSettings(showAudioQuality = true),
+            label = { badge -> qualityBadgeLabel(badge, desktopLabel("tr")) },
+        ).ipcActivity()
+        // Nothing measured and no settled label: the album is the line, never
+        // "Kalite yükseltiliyor".
+        assertEquals(
+            "An Album",
+            starting["assets"]?.jsonObject?.get("large_text")?.jsonPrimitive?.content,
         )
     }
 

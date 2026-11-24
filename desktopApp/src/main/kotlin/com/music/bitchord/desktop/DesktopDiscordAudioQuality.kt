@@ -14,11 +14,12 @@ import java.util.Locale
  * fields the decoder measured, separated by the same middle dot the rest of the
  * card uses.
  *
- * The badge is not classified here. [QualityBadgeState.badge] in `:shared`
- * makes the one decision the player's badge under the seek bar also makes, from
- * the same measured state; this file only resolves that decision to the
- * catalogue's wording and joins it to the specs. That is what makes
- * "Yüksek kalite" on the card mean exactly the "Yüksek kalite" on the player.
+ * The badge is not classified here. [QualityBadgeState.settledBadge] in
+ * `:shared` takes the player's one decision and strips the transient upgrade
+ * states out, so this file only resolves the settled label to the catalogue's
+ * wording and joins it to the specs. The card never says "upgrading": on
+ * Discord that sentence can outlive the race that earned it, and the measured
+ * stream's own label is already true while the race runs.
  *
  * Channel layout is deliberately left out here even though the player's own
  * format summary keeps it. The card names the four facts the listener asked
@@ -39,7 +40,7 @@ import java.util.Locale
  * something, so a card never states a format it has not seen.
  */
 internal data class DiscordQualityCard(
-    /** "🎧 Hi-Res Kayıpsız", or null when the player's own badge has no label. */
+    /** "🎧 Hi-Res Kayıpsız", or null when the measured stream earns no settled label. */
     val badge: String?,
     /** "FLAC · 2304 kbps · 24-bit · 48 kHz", or null before anything was measured. */
     val specs: String?,
@@ -54,14 +55,14 @@ internal data class DiscordQualityCard(
 }
 
 /**
- * The card's quality wording as its two parts, or null when neither the player
- * has a badge to show nor the decoder has measured a field.
+ * The card's quality wording as its two parts, or null when the measured
+ * stream has no settled label and the decoder has measured no field.
  *
- * The badge comes from [quality] and nowhere else: this function does not look
- * at the codec to decide what the player would call it. The specs always name
- * whichever of codec, bitrate, bit depth and sample rate [format] actually
- * reported, so a state that is still upgrading can still carry what has already
- * been measured.
+ * The badge comes from [quality]'s settled state and nowhere else: this
+ * function does not look at the codec to decide a label, and it deliberately
+ * never takes the transient upgrade badge. The specs always name whichever of
+ * codec, bitrate, bit depth and sample rate [format] actually reported, so a
+ * transient state still carries what is actually playing.
  *
  * [label] is the wording source. It defaults to the catalogue in force — the
  * card follows the app's language — and is a parameter so the wording can be
@@ -73,7 +74,7 @@ internal fun discordQualityCard(
     quality: QualityBadgeState?,
     label: (QualityBadge) -> String = { badge -> qualityBadgeLabel(badge) },
 ): DiscordQualityCard? {
-    val badge = quality?.badge?.let { "🎧 ${label(it)}" }
+    val badge = quality?.settledBadge?.let { "🎧 ${label(it)}" }
     val specs = format?.let { measured ->
         buildList {
             measured.codecLabel?.let(::add)
@@ -99,8 +100,10 @@ internal fun discordAudioQualityLine(
 ): String? = discordQualityCard(format, quality, label)?.line
 
 /**
- * The card's third information line: the measured quality while its switch is
- * on and the player has something to say, the album otherwise.
+ * The card's third information line: the settled measured quality while its
+ * switch is on and the measured stream has a label or a field to show, the
+ * album otherwise. A transient upgrade state never contributes a word here;
+ * the measured stream's own line is what stays up while the search runs.
  */
 internal fun discordThirdLine(
     format: DesktopStreamFormat?,

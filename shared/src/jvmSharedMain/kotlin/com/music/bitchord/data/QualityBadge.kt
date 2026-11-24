@@ -68,6 +68,19 @@ data class QualityBadgeState(
 
             else -> null
         }
+
+    /**
+     * The same decision with the transient upgrade states taken out.
+     *
+     * The player asks for [badge] and may say "upgrading" while it looks for a
+     * better copy. A surface that must not publish an in-between word — the
+     * Discord card — asks for this instead: the measured stream's own label,
+     * unchanged while the search runs, and the new format's label as soon as
+     * it arrives. With nothing measured yet there is no settled label at all,
+     * so the caller omits the quality segment rather than inventing one.
+     */
+    val settledBadge: QualityBadge?
+        get() = copy(isLoading = false, stillRacing = false).badge
 }
 
 /** Every label the quality badge can take, in the player's precedence order. */

@@ -62,8 +62,14 @@ internal fun DesktopStreamFormat.toNerdStats(sourceName: String?): NerdStats.Sna
  * The desktop wording for a badge, keyed exactly as the player's own
  * compose-resources catalogue keys it.
  *
+ * The two upgrading entries are part of the player's vocabulary; the Discord
+ * card never asks for them — it passes [QualityBadgeState.settledBadge], which
+ * has already taken the in-flight states out. They stay here so the resolver
+ * covers the whole enum and so the player's words remain the single reference
+ * for every label.
+ *
  * The texts are the same in both catalogues; `DesktopDiscordPresenceTest`
- * reads the player's XML out of the sharedUi jar and asserts it for every
+ * reads the player's catalogue out of the sharedUi jar and asserts it for every
  * label, so a translation that changes on one side without the other fails a
  * test rather than reaching a Discord card.
  */

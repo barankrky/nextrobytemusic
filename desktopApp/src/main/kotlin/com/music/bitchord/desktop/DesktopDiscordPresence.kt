@@ -194,6 +194,48 @@ internal sealed interface DiscordPresenceAction {
 }
 
 /**
+ * The playback facts the Discord card is rebuilt from.
+ *
+ * The window used to key its publish effect on the track, playing state,
+ * duration, speed, measured format and seek count. `searchingBetter` was not
+ * one of them, and that is what could leave the card saying "Yüksek kalite,
+ * yükseltiliyor" after the search had already stopped: [DesktopDiscordRpc]
+ * keeps the last snapshot it was handed and rebuilds from it on its own timer,
+ * so a race that ended without changing the format — no better copy was found
+ * — never replaced the snapshot that still said `searchingBetter = true`. The
+ * timer then kept rebuilding the same in-flight wording until the track
+ * changed.
+ *
+ * `searchingBetter` and `isLoading` are keys here so the settle itself is an
+ * update, even when the stream stays put. Position and volume are deliberately
+ * absent: the card advances the playhead from the position sample at publish
+ * time, and a position tick is not worth a frame.
+ */
+internal data class DiscordCardInputs(
+    val videoId: String?,
+    val isPlaying: Boolean,
+    val durationMs: Long,
+    val speed: Float,
+    val streamFormat: DesktopStreamFormat?,
+    val seeks: Int,
+    val searchingBetter: Boolean,
+    val isLoading: Boolean,
+) {
+    companion object {
+        fun of(state: DesktopPlaybackState, speed: Float): DiscordCardInputs = DiscordCardInputs(
+            videoId = state.song?.videoId,
+            isPlaying = state.isPlaying,
+            durationMs = state.durationMs,
+            speed = speed,
+            streamFormat = state.streamFormat,
+            seeks = state.seeks,
+            searchingBetter = state.searchingBetter,
+            isLoading = state.isLoading,
+        )
+    }
+}
+
+/**
  * The playhead as it is now, rather than as it was when the UI last looked.
  *
  * A settings change republishes a card that was built from the last playback

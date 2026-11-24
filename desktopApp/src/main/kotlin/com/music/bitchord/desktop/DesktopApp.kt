@@ -1926,19 +1926,13 @@ fun NextrobyteDesktopApp() {
         if (current.artistId != null && current.albumId != null) return@LaunchedEffect
         trackLinks = DesktopSearchClient.trackLinks(current.videoId).getOrNull()
     }
-    // Keyed on the same things, plus the measured format and a seek: Discord
-    // counts the bar down on its own clock, so a change to what it was told —
-    // including a format that landed after the track started — is worth another
-    // push, and only then.
+    // Keyed on everything the card is built from, including the moment a
+    // quality search settles: Discord counts the bar down on its own clock, so
+    // a change to what it was told — a new format, a new track, or the end of
+    // an upgrade that kept the current stream — is worth another push, and
+    // only then.
     LaunchedEffect(Unit) { DesktopDiscordRpc.start() }
-    LaunchedEffect(
-        playback.song?.videoId,
-        playback.isPlaying,
-        playback.durationMs,
-        playbackSpeed,
-        playback.streamFormat,
-        playback.seeks,
-    ) {
+    LaunchedEffect(DiscordCardInputs.of(playback, playbackSpeed)) {
         DesktopDiscordRpc.onPlaybackStateChanged(playback, playbackSpeed)
     }
     // The account's own history on YouTube Music, which is what the home feed is built out of.
