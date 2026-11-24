@@ -19,6 +19,7 @@
     <string name="d_closing_the_window_leaves_bitchord_in_the_tray_instead_o">關閉視窗後 nextrobytemusic 會留在托盤中，而不是退出</string>
     <string name="d_continue_playing">繼續播放</string>
     <string name="d_custom_module">自定義模組</string>
+    <string name="d_discord_presence_off">關閉</string>
     <string name="d_discord_rich_presence_last_fm_and_listenbrainz">Discord 豐富狀態、Last.fm 和 ListenBrainz</string>
     <string name="d_dont_repeat_songs_in_current_session">本次會話不重複歌曲</string>
     <string name="d_downloaded_songs_will_appear_here">下載的歌曲會顯示在這裡。</string>
@@ -54,6 +55,8 @@
     <string name="d_quit_bitchord">退出 nextrobytemusic</string>
     <string name="d_recently_played_on_this_computer">最近在本機播放</string>
     <string name="d_recents">最近</string>
+    <string name="d_show_audio_quality">顯示音質</string>
+    <string name="d_show_audio_quality_subtitle">在卡片第三行顯示實測編解碼器與位元率，或 Hi-Res、無損和 Dolby 規格</string>
     <string name="d_remove_from_playlist">從播放列表中移除</string>
     <string name="d_repeat">迴圈</string>
     <string name="d_scroll_left">向左滾動</string>

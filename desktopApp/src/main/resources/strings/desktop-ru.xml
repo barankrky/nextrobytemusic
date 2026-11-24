@@ -19,6 +19,7 @@
     <string name="d_closing_the_window_leaves_bitchord_in_the_tray_instead_o">При закрытии окна nextrobytemusic остаётся в трее, а не завершает работу</string>
     <string name="d_continue_playing">Продолжить прослушивание</string>
     <string name="d_custom_module">Свой модуль</string>
+    <string name="d_discord_presence_off">Выкл.</string>
     <string name="d_discord_rich_presence_last_fm_and_listenbrainz">Discord Rich Presence, Last.fm и ListenBrainz</string>
     <string name="d_dont_repeat_songs_in_current_session">Не повторять треки в этой сессии</string>
     <string name="d_downloaded_songs_will_appear_here">Загруженные треки появятся здесь.</string>
@@ -54,6 +55,8 @@
     <string name="d_quit_bitchord">Выйти из nextrobytemusic</string>
     <string name="d_recently_played_on_this_computer">Недавно прослушано на этом компьютере</string>
     <string name="d_recents">Недавние</string>
+    <string name="d_show_audio_quality">Показывать качество звука</string>
+    <string name="d_show_audio_quality_subtitle">Измеренный кодек и битрейт или характеристики Hi-Res, lossless и Dolby в третьей строке карточки</string>
     <string name="d_remove_from_playlist">Удалить из плейлиста</string>
     <string name="d_repeat">Повтор</string>
     <string name="d_scroll_left">Прокрутить влево</string>

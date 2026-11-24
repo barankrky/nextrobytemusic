@@ -1926,9 +1926,19 @@ fun NextrobyteDesktopApp() {
         if (current.artistId != null && current.albumId != null) return@LaunchedEffect
         trackLinks = DesktopSearchClient.trackLinks(current.videoId).getOrNull()
     }
-    // Keyed on the same things, plus the rate: Discord counts the bar down on
-    // its own clock, so only a change to what it was told is worth another push.
-    LaunchedEffect(playback.song?.videoId, playback.isPlaying, playback.durationMs, playbackSpeed) {
+    // Keyed on the same things, plus the measured format and a seek: Discord
+    // counts the bar down on its own clock, so a change to what it was told —
+    // including a format that landed after the track started — is worth another
+    // push, and only then.
+    LaunchedEffect(Unit) { DesktopDiscordRpc.start() }
+    LaunchedEffect(
+        playback.song?.videoId,
+        playback.isPlaying,
+        playback.durationMs,
+        playbackSpeed,
+        playback.streamFormat,
+        playback.seeks,
+    ) {
         DesktopDiscordRpc.onPlaybackStateChanged(playback, playbackSpeed)
     }
     // The account's own history on YouTube Music, which is what the home feed is built out of.
@@ -3792,6 +3802,7 @@ fun NextrobyteDesktopApp() {
                                 )
                                 DesktopSettingsPage.INTEGRATIONS -> DesktopIntegrationsDialog(
                                     song = playback.song,
+                                    format = playback.streamFormat,
                                     spotify = DesktopSpotifyConnection(
                                         connected = spotifyCanvasCookie.isNotBlank(),
                                         canSignIn = DesktopWebSignIn.available,

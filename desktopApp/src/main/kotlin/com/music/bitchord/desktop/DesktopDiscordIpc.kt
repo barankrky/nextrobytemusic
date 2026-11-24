@@ -34,6 +34,7 @@ internal class DesktopDiscordIpc private constructor(
         private const val OP_HANDSHAKE = 0
         private const val OP_FRAME = 1
         private const val OP_CLOSE = 2
+        private const val OP_PING = 3
 
         /**
          * Connects to the first Discord that answers.
@@ -97,6 +98,19 @@ internal class DesktopDiscordIpc private constructor(
     fun setActivity(activity: JsonObject?) {
         send(OP_FRAME, activityPayload(activity))
     }
+
+    /**
+     * Whether the client is still there.
+     *
+     * A Discord that has quit takes its pipe with it, and the next write would
+     * fail — but a track that does not change produces no write, so the socket
+     * would look healthy while the card was gone. Discord answers a PING with a
+     * PONG, which is the cheapest question that proves the other end is alive.
+     */
+    fun ping(): Boolean = runCatching {
+        send(OP_PING, "{}")
+        read() != null
+    }.getOrDefault(false)
 
     private fun send(opcode: Int, payload: String) {
         val frame = ByteBuffer.wrap(discordFrame(opcode, payload))

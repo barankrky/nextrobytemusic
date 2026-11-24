@@ -19,6 +19,7 @@
     <string name="d_closing_the_window_leaves_bitchord_in_the_tray_instead_o">ウィンドウを閉じても終了せず、nextrobytemusic はトレイに残ります</string>
     <string name="d_continue_playing">続きを再生</string>
     <string name="d_custom_module">カスタムモジュール</string>
+    <string name="d_discord_presence_off">オフ</string>
     <string name="d_discord_rich_presence_last_fm_and_listenbrainz">Discord リッチプレゼンス、Last.fm、ListenBrainz</string>
     <string name="d_dont_repeat_songs_in_current_session">このセッションで曲を繰り返さない</string>
     <string name="d_downloaded_songs_will_appear_here">ダウンロードした曲がここに表示されます。</string>
@@ -54,6 +55,8 @@
     <string name="d_quit_bitchord">nextrobytemusic を終了</string>
     <string name="d_recently_played_on_this_computer">このコンピュータで最近再生した曲</string>
     <string name="d_recents">最近</string>
+    <string name="d_show_audio_quality">音質を表示</string>
+    <string name="d_show_audio_quality_subtitle">実測のコーデックとビットレート、またはハイレゾ・ロスレス・Dolby の仕様をカードの3行目に表示</string>
     <string name="d_remove_from_playlist">プレイリストから削除</string>
     <string name="d_repeat">リピート</string>
     <string name="d_scroll_left">左にスクロール</string>

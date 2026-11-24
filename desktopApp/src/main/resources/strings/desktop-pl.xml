@@ -19,6 +19,7 @@
     <string name="d_closing_the_window_leaves_bitchord_in_the_tray_instead_o">Zamknięcie okna zostawia nextrobytemusic w zasobniku zamiast go zamykać</string>
     <string name="d_continue_playing">Słuchaj dalej</string>
     <string name="d_custom_module">Własny moduł</string>
+    <string name="d_discord_presence_off">Wyłączone</string>
     <string name="d_discord_rich_presence_last_fm_and_listenbrainz">Rich Presence Discorda, Last.fm i ListenBrainz</string>
     <string name="d_dont_repeat_songs_in_current_session">Nie powtarzaj utworów w tej sesji</string>
     <string name="d_downloaded_songs_will_appear_here">Pobrane utwory pojawią się tutaj.</string>
@@ -54,6 +55,8 @@
     <string name="d_quit_bitchord">Zamknij nextrobytemusic</string>
     <string name="d_recently_played_on_this_computer">Ostatnio odtwarzane na tym komputerze</string>
     <string name="d_recents">Ostatnie</string>
+    <string name="d_show_audio_quality">Pokaż jakość dźwięku</string>
+    <string name="d_show_audio_quality_subtitle">Zmierzony kodek i bitrate lub specyfikacja Hi-Res, bezstratna i Dolby w trzeciej linii karty</string>
     <string name="d_remove_from_playlist">Usuń z playlisty</string>
     <string name="d_repeat">Powtarzaj</string>
     <string name="d_scroll_left">Przewiń w lewo</string>

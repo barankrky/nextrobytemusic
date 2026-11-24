@@ -53,6 +53,7 @@ import kotlin.math.roundToInt
 @Composable
 internal fun DesktopIntegrationsDialog(
     song: Song?,
+    format: DesktopStreamFormat?,
     spotify: DesktopSpotifyConnection,
     onOpenLastfm: () -> Unit,
     onOpenListenBrainz: () -> Unit,
@@ -74,7 +75,7 @@ internal fun DesktopIntegrationsDialog(
                 modifier = Modifier.padding(start = panelInset(20.dp), end = panelInset(20.dp), top = 18.dp, bottom = 12.dp),
             )
             SpotifySection(spotify)
-            DiscordSection(song, onOpenDiscordToken, onChoose = { choosing = it }, onEdit = { editing = it })
+            DiscordSection(song, format, onOpenDiscordToken, onChoose = { choosing = it }, onEdit = { editing = it })
             ScrobblingSection(onOpenLastfm, onOpenListenBrainz)
         }
         DesktopCardRule()
@@ -169,6 +170,7 @@ private fun SpotifySection(spotify: DesktopSpotifyConnection) {
 @Composable
 private fun DiscordSection(
     song: Song?,
+    format: DesktopStreamFormat?,
     onOpenDiscordToken: () -> Unit,
     onChoose: (DiscordChoice) -> Unit,
     onEdit: (DiscordField) -> Unit,
@@ -178,6 +180,7 @@ private fun DiscordSection(
     val username by DesktopDiscordRpc.username.collectAsState()
     val rpcEnabled by DesktopDiscordRpc.enabled.collectAsState()
     val useDetails by DesktopDiscordSettings.useDetails.collectAsState()
+    val showAudioQuality by DesktopDiscordSettings.showAudioQuality.collectAsState()
     val advanced by DesktopDiscordSettings.advancedMode.collectAsState()
     val status by DesktopDiscordSettings.status.collectAsState()
     val activityType by DesktopDiscordSettings.activityType.collectAsState()
@@ -188,8 +191,6 @@ private fun DiscordSection(
     val button2Visible by DesktopDiscordSettings.button2Visible.collectAsState()
     LaunchedEffect(Unit) { DesktopDiscordRpc.refreshLocalClient() }
 
-    val connected = local || token.isNotBlank()
-
     PanelGroup(
         header = "Rich presence",
         footer = "The card updates when the track, position or playback state changes. " +
@@ -197,14 +198,16 @@ private fun DiscordSection(
     ) {
         PanelSwitchRow(
             title = DesktopStrings["show_what_playing", "Show what I am playing"],
+            // The stored answer, not the connection: Discord being closed is a
+            // reason to wait, not a reason to turn the user's choice off. The
+            // card appears by itself when the client starts.
             subtitle = when {
-                !connected -> "Connect an account first"
+                !rpcEnabled -> DesktopStrings["d_discord_presence_off", "Off"]
                 local -> "Sharing through the Discord app on this computer"
                 username.isNotBlank() -> "Sharing as @$username"
-                else -> null
+                else -> "Starts sharing when the Discord app on this computer is running"
             },
-            checked = rpcEnabled && connected,
-            enabled = connected,
+            checked = rpcEnabled,
             onCheckedChange = DesktopDiscordRpc::setEnabled,
         )
         DesktopCardRule()
@@ -212,20 +215,31 @@ private fun DiscordSection(
             title = DesktopStrings["lead_with_song", "Lead with the song"],
             subtitle = DesktopStrings["lead_with_song_subtitle", "Puts the title on the bold line instead of the artist"],
             checked = useDetails,
-            enabled = connected && rpcEnabled,
+            enabled = rpcEnabled,
             onCheckedChange = DesktopDiscordSettings::setUseDetails,
+        )
+        DesktopCardRule()
+        PanelSwitchRow(
+            title = DesktopStrings["d_show_audio_quality", "Show audio quality"],
+            subtitle = DesktopStrings[
+                "d_show_audio_quality_subtitle",
+                "The measured codec and bitrate, or the Hi-Res, lossless and Dolby spec, on the card's third line",
+            ],
+            checked = showAudioQuality,
+            enabled = rpcEnabled,
+            onCheckedChange = DesktopDiscordSettings::setShowAudioQuality,
         )
         DesktopCardRule()
         PanelSwitchRow(
             title = DesktopStrings["customize_card", "Customize the card"],
             subtitle = DesktopStrings["customize_card_subtitle", "Status, wording and both buttons"],
             checked = advanced,
-            enabled = connected && rpcEnabled,
+            enabled = rpcEnabled,
             onCheckedChange = DesktopDiscordSettings::setAdvancedMode,
         )
     }
 
-    if (connected && rpcEnabled && advanced) {
+    if (rpcEnabled && advanced) {
         PanelGroup(header = "Presence") {
             PanelValueRow("Status", DesktopDiscordSettings.statusLabel(status)) {
                 onChoose(
@@ -322,6 +336,7 @@ private fun DiscordSection(
             heading = activityName.ifEmpty { DesktopDiscordSettings.APP_NAME },
             verb = DesktopDiscordSettings.activityVerb(activityType),
             useDetails = useDetails,
+            audioQuality = discordAudioQualityLine(format).takeIf { showAudioQuality },
             button1Text = button1Text,
             button1Visible = button1Visible,
             button2Text = button2Text,
@@ -468,6 +483,7 @@ private fun RichPresencePreview(
     heading: String,
     verb: String,
     useDetails: Boolean,
+    audioQuality: String?,
     button1Text: String,
     button1Visible: Boolean,
     button2Text: String,
@@ -510,7 +526,10 @@ private fun RichPresencePreview(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                song?.albumName?.let {
+                // The third line is the measured quality while its switch is
+                // on, and the album otherwise — the same slot the presence
+                // itself fills.
+                (audioQuality ?: song?.albumName)?.let {
                     Text(
                         it,
                         style = MaterialTheme.typography.bodySmall,

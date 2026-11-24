@@ -1,27 +1,29 @@
 package com.music.bitchord.desktop
 
-import com.music.bitchord.data.model.Song
-import com.music.bitchord.data.model.artworkAt
 import com.my.kizzy.rpc.KizzyRPC
 import com.my.kizzy.rpc.RpcImage
 import com.my.kizzy.rpc.UserInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonObject
-import kotlinx.serialization.json.putJsonArray
-import kotlinx.serialization.json.add
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.util.Base64
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.Executors
 
 /**
  * Publishes what is playing to Discord as a Rich Presence activity.
@@ -42,43 +44,88 @@ import java.util.UUID
  * Android offers it, as the alternative rather than the front door, because it
  * hands an app full account access and account automation is against Discord's
  * terms.
+ *
+ * The switch is the whole feature, so the object owns its lifecycle rather than
+ * waiting for the settings panel to be opened: with it on, [start] keeps a
+ * socket attempt going, notices a Discord that starts after the app, notices
+ * one that quits, and republishes a card that a new connection never heard.
+ * Everything transport-facing runs on one worker, so two pushes cannot write
+ * interleaved frames into the same pipe.
  */
 internal object DesktopDiscordRpc {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val worker = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "desktop-discord-rpc").apply { isDaemon = true }
+    }.asCoroutineDispatcher()
+
+    private val scope = CoroutineScope(SupervisorJob() + worker)
+
+    @Volatile
     private var rpc: KizzyRPC? = null
+
+    @Volatile
     private var ipc: DesktopDiscordIpc? = null
-    private var lastKey: String? = null
+
+    /** The last playback state seen, kept so a switch change has something to publish. */
+    @Volatile
+    private var latest: DesktopPlaybackState? = null
+
+    @Volatile
+    private var latestSpeed: Float = 1f
+
+    @Volatile
+    private var latestSeeks: Int = -1
+
+    private val cache = DiscordPresenceCache(
+        send = ::deliver,
+        clearTransport = ::deliverClear,
+    )
 
     private val _localClient = MutableStateFlow(false)
 
     /** Whether a Discord on this machine is answering, so no token is needed. */
     val localClient: StateFlow<Boolean> = _localClient
 
-    /** Looks for a local Discord. Cheap, and the answer changes when one starts. */
-    fun refreshLocalClient() {
-        scope.launch {
-            val found = DesktopDiscordIpc.connect(APPLICATION_ID)
-            if (found != null) {
-                ipc?.close()
-                ipc = found
-                _localClient.value = true
-            } else {
-                _localClient.value = ipc != null
-            }
-        }
-    }
-
     private val _username = MutableStateFlow(DesktopPersistence().string(KEY_USERNAME, ""))
 
     /** Who the stored token belongs to, for the settings row to name. */
     val username: StateFlow<String> = _username
 
-    private val _enabled = MutableStateFlow(DesktopPersistence().boolean(KEY_ENABLED, false))
+    private val _enabled = MutableStateFlow(
+        DesktopPersistence().boolean(KEY_ENABLED, DesktopDiscordSettings.DEFAULT_RPC_ENABLED),
+    )
+
+    /** Whether the user wants the card shown; independent of whether Discord is running. */
     val enabled: StateFlow<Boolean> = _enabled
 
     private val _token = MutableStateFlow(DesktopPersistence().string(KEY_TOKEN, ""))
     val token: StateFlow<String> = _token
+
+    @Volatile
+    private var started = false
+
+    /**
+     * Starts the parts that do not depend on a screen: the settings observer and
+     * the socket watcher.
+     *
+     * Called once from the app shell. Before this, the only connection attempt
+     * happened when the settings panel was opened, which is why a card could be
+     * missing from a whole listening session.
+     */
+    fun start() {
+        if (started) return
+        synchronized(this) {
+            if (started) return
+            started = true
+        }
+        scope.launch { observeCardSettings() }
+        scope.launch { watchConnection() }
+    }
+
+    /** A settings panel opening is a good moment to look now rather than at the next tick. */
+    fun refreshLocalClient() {
+        scope.launch { watchOnce() }
+    }
 
     /** Checks a token by asking Discord who it belongs to, then keeps it. */
     suspend fun signIn(candidate: String): Result<UserInfo> =
@@ -99,155 +146,255 @@ internal object DesktopDiscordRpc {
         _username.value = ""
     }
 
+    /**
+     * The switch.
+     *
+     * On connects and publishes what is playing right away, because a card that
+     * only appeared at the next track change made the switch look broken for the
+     * length of a song. Off clears the card and closes the socket: leaving the
+     * pipe open left Discord believing a presence could still arrive.
+     */
     fun setEnabled(value: Boolean) {
         DesktopPersistence().saveBoolean(KEY_ENABLED, value)
         _enabled.value = value
-        if (!value) clear()
+        scope.launch {
+            if (value) {
+                cache.forget()
+                ensureLocal()
+                publish(force = true)
+            } else {
+                cache.clear()
+                closeGateway()
+                dropLocal()
+                DesktopTrackLog.log("discord: sharing off")
+            }
+        }
     }
 
     /**
      * Pushes the current track, or takes the presence down.
      *
-     * Discord counts the progress bar down on its own clock from the start and
-     * end instants, so a presence set once stays correct for the rest of the
-     * track and only a real change is worth sending — which is what [lastKey]
-     * decides. Playback speed is divided out of both instants: at 1.5x the
-     * wall-clock time left is not the media time left, and a presence that
-     * ignored that would finish its countdown mid-song.
+     * Called on every playback change the UI is told about: the track, whether
+     * it is playing, its length, the playback rate, the measured format and a
+     * seek. The card's own key decides whether any of that is worth a frame;
+     * a seek is not in the key and forces a push so the countdown restarts where
+     * the listener jumped to.
      */
     fun onPlaybackStateChanged(state: DesktopPlaybackState, speed: Float) {
+        val previous = latest
+        val current = state.song
+        val force = current != null &&
+            current.videoId == previous?.song?.videoId &&
+            state.seeks != latestSeeks
+        latest = state
+        latestSpeed = speed
+        latestSeeks = state.seeks
         if (!_enabled.value) return
-        if (_token.value.isBlank() && ipc == null) return
-        val song = state.song
-        if (song == null || !state.isPlaying) {
-            clear()
-            return
-        }
-        val key = "${song.videoId}|${state.durationMs}|$speed"
-        if (key == lastKey) return
-        lastKey = key
-        val position = state.positionMs
-        val duration = state.durationMs.takeIf { it > 0 } ?: 0L
-        scope.launch {
-            val now = System.currentTimeMillis()
-            val elapsed = (position / speed).toLong()
-            val remaining = ((duration - position).coerceAtLeast(0L) / speed).toLong()
-            val title = if (speed != 1.0f) {
-                "${song.title} [${String.format(Locale.ROOT, "%.2fx", speed)}]"
-            } else {
-                song.title
-            }
-            // The socket first, and the gateway only if there is no socket:
-            // publishing through both would put the same presence up twice.
-            val local = ipc
-            if (local != null) {
-                val sent = runCatching {
-                    local.setActivity(ipcActivity(song, title, now - elapsed, now + remaining))
-                }.isSuccess
-                if (sent) return@launch
-                // A client that has quit takes its socket with it.
-                ipc = null
-                _localClient.value = false
-            }
-            if (_token.value.isBlank()) return@launch
-            runCatching {
-                val client = rpc ?: KizzyRPC(
-                    token = _token.value,
-                    os = if (DesktopPlatform.isWindows) "Windows" else "Linux",
-                    browser = "Discord Client",
-                    device = "desktop",
-                    userAgent = USER_AGENT,
-                    superPropertiesBase64 = superProperties(),
-                ).also { rpc = it }
-
-                client.setActivity(
-                    name = DesktopDiscordSettings.activityName.value
-                        .ifBlank { DesktopDiscordSettings.APP_NAME },
-                    details = title,
-                    state = song.artist,
-                    detailsUrl = watchUrl(song),
-                    // Never null: an activity with no large image falls back to
-                    // whatever icon the application id points at, which is not
-                    // ours to set.
-                    largeImage = RpcImage.ExternalImage(
-                        song.artworkAt(ART_PX)?.takeIf { it.startsWith("http") } ?: FALLBACK_ART_URL,
-                    ),
-                    smallImage = null,
-                    largeText = song.albumName,
-                    buttons = buttonLabels(song).takeIf { it.isNotEmpty() },
-                    type = when (DesktopDiscordSettings.activityType.value) {
-                        "playing" -> KizzyRPC.Type.PLAYING
-                        "watching" -> KizzyRPC.Type.WATCHING
-                        "competing" -> KizzyRPC.Type.COMPETING
-                        else -> KizzyRPC.Type.LISTENING
-                    },
-                    statusDisplayType = if (DesktopDiscordSettings.useDetails.value) {
-                        KizzyRPC.StatusDisplayType.DETAILS
-                    } else {
-                        KizzyRPC.StatusDisplayType.STATE
-                    },
-                    since = now,
-                    startTime = now - elapsed,
-                    endTime = now + remaining,
-                    applicationId = APPLICATION_ID,
-                    status = DesktopDiscordSettings.status.value,
-                )
-            }
-        }
-    }
-
-    fun clear() {
-        lastKey = null
-        runCatching { ipc?.setActivity(null) }
-        rpc?.closeRPC()
-        rpc = null
+        scope.launch { publish(force = force) }
     }
 
     /**
-     * The activity as the local socket wants it.
+     * The card settings are inputs to the presence, not to the next track.
      *
-     * The same fields the gateway payload carries, in the shape SET_ACTIVITY
-     * takes. Artwork goes over as a plain URL: mirroring it onto Discord's CDN
-     * is what needs an account token, and the client resolves an http asset by
-     * itself.
+     * Every one of them is watched, including the customize switch: turning it
+     * off changes nothing about the wording, but the push keeps the presence in
+     * step with the panel the user is looking at and is cheap compared to a
+     * card that appears to be stuck.
      */
-    private fun ipcActivity(song: Song, title: String, startMs: Long, endMs: Long): JsonObject = buildJsonObject {
-        put("type", DesktopDiscordSettings.activityNumber(DesktopDiscordSettings.activityType.value))
-        DesktopDiscordSettings.activityName.value.takeIf(String::isNotBlank)?.let { put("name", it) }
-        put("details", title)
-        put("state", song.artist)
-        // Which line Discord bolds, and repeats beside the name in a member
-        // list — the whole point of "Lead with the song".
-        put("status_display_type", if (DesktopDiscordSettings.useDetails.value) 1 else 2)
-        putJsonObject("timestamps") {
-            put("start", startMs)
-            put("end", endMs)
-        }
-        putJsonObject("assets") {
-            put("large_image", song.artworkAt(ART_PX)?.takeIf { it.startsWith("http") } ?: FALLBACK_ART_URL)
-            song.albumName?.let { put("large_text", it) }
-        }
-        val labels = buttonLabels(song)
-        if (labels.isNotEmpty()) {
-            putJsonArray("buttons") {
-                labels.forEach { (label, url) ->
-                    add(buildJsonObject { put("label", label); put("url", url) })
-                }
+    private suspend fun observeCardSettings() {
+        val settings = DesktopDiscordSettings
+        combine<Any, List<Any>>(
+            settings.useDetails,
+            settings.advancedMode,
+            settings.status,
+            settings.activityType,
+            settings.activityName,
+            settings.button1Text,
+            settings.button1Visible,
+            settings.button2Text,
+            settings.button2Visible,
+            settings.showAudioQuality,
+        ) { it.toList() }
+            .drop(1)
+            .collect {
+                if (!_enabled.value) return@collect
+                publish(force = true)
             }
+    }
+
+    /**
+     * Keeps an eye on the local client.
+     *
+     * Discord can start after this app, quit while it plays, or restart after an
+     * update. A missing socket is retried, and one that stopped answering is
+     * dropped and replaced — the presence is then republished, because a new
+     * pipe has been told nothing.
+     */
+    private suspend fun watchConnection() {
+        while (currentCoroutineContext().isActive) {
+            runCatching { watchOnce() }.onFailure {
+                // One line rather than a stack: the reasons are ordinary — a
+                // pipe that vanished mid-handshake, a client that just quit —
+                // and the next tick is the retry.
+                DesktopTrackLog.log("discord: watcher could not reach the client: ${it.message}")
+            }
+            delay(CONNECTION_POLL_MS)
         }
     }
 
-    /** The buttons as configured: text with its variables filled in, and hidden ones dropped. */
-    private fun buttonLabels(song: Song): List<Pair<String, String>> = buildList {
-        val settings = DesktopDiscordSettings
-        if (settings.button1Visible.value) {
-            val text = settings.button1Text.value.ifEmpty { DesktopDiscordSettings.DEFAULT_BUTTON_1 }
-            add(settings.resolveVariables(text, song.title, song.artist, song.albumName) to watchUrl(song))
+    private suspend fun watchOnce() {
+        if (!_enabled.value) return
+        val local = ipc
+        if (local != null) {
+            val alive = withTimeoutOrNull(PING_TIMEOUT_MS) {
+                withContext(Dispatchers.IO) { local.ping() }
+            } ?: false
+            if (!alive) {
+                DesktopTrackLog.log("discord: local client stopped answering; reconnecting")
+                dropLocal()
+            }
         }
-        if (settings.button2Visible.value) {
-            val text = settings.button2Text.value.ifEmpty { DesktopDiscordSettings.DEFAULT_BUTTON_2 }
-            add(settings.resolveVariables(text, song.title, song.artist, song.albumName) to PROJECT_URL)
+        if (ipc == null) {
+            if (ensureLocal() == null) return
         }
+        publish()
+    }
+
+    /** Builds the card and lets [cache] decide whether Discord needs it. */
+    private suspend fun publish(force: Boolean = false) {
+        val nowNanos = System.nanoTime()
+        val state = latest?.let {
+            it.copy(positionMs = projectedPositionMs(it, latestSpeed, nowNanos))
+        }
+        val action = discordPresenceAction(
+            enabled = _enabled.value,
+            state = state,
+            speed = latestSpeed,
+            settings = DesktopDiscordSettings.cardSettings(),
+            nowMs = System.currentTimeMillis(),
+        )
+        when (action) {
+            DiscordPresenceAction.Idle -> Unit
+            DiscordPresenceAction.Clear -> cache.clear()
+            is DiscordPresenceAction.Show -> cache.push(action.presence, force)
+        }
+    }
+
+    /** One local client, connected if it was not already. */
+    private fun ensureLocal(): DesktopDiscordIpc? {
+        ipc?.let { return it }
+        val found = runCatching { DesktopDiscordIpc.connect(APPLICATION_ID) }.getOrNull() ?: return null
+        ipc = found
+        _localClient.value = true
+        // A fresh pipe has been told nothing, whatever the previous one knew.
+        cache.forget()
+        DesktopTrackLog.log("discord: connected to the local client")
+        return found
+    }
+
+    private fun dropLocal() {
+        val local = ipc ?: return
+        ipc = null
+        _localClient.value = false
+        cache.forget()
+        runCatching { local.close() }
+    }
+
+    /**
+     * Sends the card, local socket first.
+     *
+     * A failed write means the client quit or restarted; the socket is
+     * discarded and one immediate reconnect is tried, because the common case is
+     * a Discord that has just come back and a track that did not change. The
+     * gateway is only asked when no local client can be reached at all.
+     */
+    private suspend fun deliver(presence: DiscordPresence): Boolean {
+        var local = ensureLocal()
+        if (local != null) {
+            if (runCatching { local.setActivity(presence.ipcActivity()) }.isSuccess) {
+                DesktopTrackLog.log(
+                    "discord: published '${presence.title}' to the local client" +
+                        presence.thirdLine?.let { line -> " · $line" }.orEmpty(),
+                )
+                return true
+            }
+            dropLocal()
+            local = ensureLocal()
+            if (local != null && runCatching { local.setActivity(presence.ipcActivity()) }.isSuccess) {
+                DesktopTrackLog.log("discord: republished '${presence.title}' after reconnecting")
+                return true
+            }
+        }
+
+        val token = _token.value
+        if (token.isBlank()) {
+            DesktopTrackLog.log("discord: no local client and no token; the card waits for one")
+            return false
+        }
+        return deliverViaGateway(presence, token)
+    }
+
+    private suspend fun deliverViaGateway(presence: DiscordPresence, token: String): Boolean =
+        runCatching {
+            val client = rpc ?: KizzyRPC(
+                token = token,
+                os = if (DesktopPlatform.isWindows) "Windows" else "Linux",
+                browser = "Discord Client",
+                device = "desktop",
+                userAgent = USER_AGENT,
+                superPropertiesBase64 = superProperties(),
+            ).also { rpc = it }
+
+            client.setActivity(
+                name = presence.heading,
+                details = presence.title,
+                state = presence.artist,
+                detailsUrl = presence.watchUrl,
+                // Never null: an activity with no large image falls back to
+                // whatever icon the application id points at, which is not
+                // ours to set.
+                largeImage = RpcImage.ExternalImage(presence.artworkUrl),
+                smallImage = null,
+                largeText = presence.thirdLine,
+                buttons = presence.buttons.takeIf { it.isNotEmpty() },
+                type = when (presence.activityType) {
+                    "playing" -> KizzyRPC.Type.PLAYING
+                    "watching" -> KizzyRPC.Type.WATCHING
+                    "competing" -> KizzyRPC.Type.COMPETING
+                    else -> KizzyRPC.Type.LISTENING
+                },
+                statusDisplayType = if (presence.useDetails) {
+                    KizzyRPC.StatusDisplayType.DETAILS
+                } else {
+                    KizzyRPC.StatusDisplayType.STATE
+                },
+                since = presence.sinceMs,
+                startTime = presence.startMs,
+                endTime = presence.endMs,
+                applicationId = APPLICATION_ID,
+                status = presence.status,
+            )
+            DesktopTrackLog.log("discord: published '${presence.title}' through the account gateway")
+        }.onFailure {
+            // The message is Discord's, and never carries the token.
+            DesktopTrackLog.log("discord: gateway update failed: ${it.message}")
+        }.isSuccess
+
+    /** Takes the presence down without closing the connection, so resuming is cheap. */
+    private suspend fun deliverClear() {
+        val local = ipc
+        if (local != null) runCatching { local.setActivity(null) }
+        val client = rpc
+        if (client != null) {
+            runCatching { client.close() }
+        }
+    }
+
+    private suspend fun closeGateway() {
+        val client = rpc ?: return
+        rpc = null
+        runCatching { client.close() }
+        runCatching { withContext(Dispatchers.IO) { client.closeRPC() } }
     }
 
     /**
@@ -282,19 +429,19 @@ internal object DesktopDiscordRpc {
 
     private fun superProperties(): String = superProperties
 
-    private fun watchUrl(song: Song) = "https://music.youtube.com/watch?v=${song.videoId}"
-
     private const val KEY_TOKEN = "discord_token"
     private const val KEY_USERNAME = "discord_username"
     private const val KEY_ENABLED = "discord_rpc_enabled"
 
-    private const val APPLICATION_ID = "1411019391843172514"
-    private const val PROJECT_URL = "https://github.com/barankrky/nextrobytemusic"
-    private const val ART_PX = 480
-    private const val FALLBACK_ART_URL =
-        "https://raw.githubusercontent.com/barankrky/nextrobytemusic/main/app/src/main/ic_launcher-playstore.png"
+    private const val APPLICATION_ID = "1574579619661750373"
     private const val CLIENT_VERSION = "0.0.83"
     private const val CLIENT_BUILD = "352675"
     private const val USER_AGENT =
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) discord/0.0.83 Chrome/120.0.0.0 Electron/28.2.10 Safari/537.36"
+
+    /** How often a missing local client is looked for again. */
+    private const val CONNECTION_POLL_MS = 5_000L
+
+    /** A local client that cannot answer a ping in this long is treated as gone. */
+    private const val PING_TIMEOUT_MS = 2_000L
 }

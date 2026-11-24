@@ -19,6 +19,7 @@
     <string name="d_closing_the_window_leaves_bitchord_in_the_tray_instead_o">סגירת החלון משאירה את nextrobytemusic במגש במקום לצאת</string>
     <string name="d_continue_playing">המשך להאזין</string>
     <string name="d_custom_module">מודול מותאם אישית</string>
+    <string name="d_discord_presence_off">כבוי</string>
     <string name="d_discord_rich_presence_last_fm_and_listenbrainz">נוכחות עשירה ב-Discord, ‏Last.fm ו-ListenBrainz</string>
     <string name="d_dont_repeat_songs_in_current_session">אל תחזור על שירים בפעילות הזו</string>
     <string name="d_downloaded_songs_will_appear_here">שירים שהורדו יופיעו כאן.</string>
@@ -54,6 +55,8 @@
     <string name="d_quit_bitchord">צא מ-nextrobytemusic</string>
     <string name="d_recently_played_on_this_computer">הושמע לאחרונה במחשב הזה</string>
     <string name="d_recents">אחרונים</string>
+    <string name="d_show_audio_quality">הצגת איכות השמע</string>
+    <string name="d_show_audio_quality_subtitle">הקודק והקצב הנמדדים, או מפרט Hi-Res, Lossless ו-Dolby, בשורה השלישית של הכרטיס</string>
     <string name="d_remove_from_playlist">הסר מהפלייליסט</string>
     <string name="d_repeat">חזרה</string>
     <string name="d_scroll_left">גלול שמאלה</string>

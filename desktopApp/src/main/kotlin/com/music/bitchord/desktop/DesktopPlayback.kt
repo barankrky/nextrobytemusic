@@ -132,7 +132,7 @@ data class DesktopStreamFormat(
         get() = (bitDepth ?: 16) * 1_000_000 + (sampleRateHz ?: 44_100)
 
     /** The rate to state on screen. */
-    private val statedKbps: Int?
+    internal val statedKbps: Int?
         get() = when {
             !isLossless -> kbps
             bitDepth != null && sampleRateHz != null && channels != null ->

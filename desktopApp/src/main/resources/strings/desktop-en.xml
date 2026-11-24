@@ -21,6 +21,7 @@
     <string name="d_closing_the_window_leaves_bitchord_in_the_tray_instead_o">Closing the window leaves nextrobytemusic in the tray instead of quitting</string>
     <string name="d_continue_playing">Continue Playing</string>
     <string name="d_custom_module">Custom module</string>
+    <string name="d_discord_presence_off">Off</string>
     <string name="d_discord_rich_presence_last_fm_and_listenbrainz">Discord rich presence, Last.fm and ListenBrainz</string>
     <string name="d_dont_repeat_songs_in_current_session">Don’t repeat songs in current session</string>
     <string name="d_downloaded_songs_will_appear_here">Downloaded songs will appear here.</string>
@@ -56,6 +57,8 @@
     <string name="d_quit_bitchord">Quit nextrobytemusic</string>
     <string name="d_recently_played_on_this_computer">Recently played on this computer</string>
     <string name="d_recents">Recents</string>
+    <string name="d_show_audio_quality">Show audio quality</string>
+    <string name="d_show_audio_quality_subtitle">The measured codec and bitrate, or the Hi-Res, lossless and Dolby spec, on the card\'s third line</string>
     <string name="d_remove_from_playlist">Remove from playlist</string>
     <string name="d_repeat">Repeat</string>
     <string name="d_scroll_left">Scroll left</string>

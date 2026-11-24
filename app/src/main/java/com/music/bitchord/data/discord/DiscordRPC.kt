@@ -165,7 +165,7 @@ class DiscordRPC(
          * paste its id here to have the artwork proxied and the buttons
          * attributed under your own app rather than the upstream project's.
          */
-        private const val APPLICATION_ID = "1411019391843172514"
+        private const val APPLICATION_ID = "1574579619661750373"
 
         const val PROJECT_URL = "https://github.com/barankrky/nextrobytemusic"
 

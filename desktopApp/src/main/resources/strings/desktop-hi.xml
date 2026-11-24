@@ -19,6 +19,7 @@
     <string name="d_closing_the_window_leaves_bitchord_in_the_tray_instead_o">विंडो बंद करने पर nextrobytemusic बंद होने के बजाय ट्रे में रहता है</string>
     <string name="d_continue_playing">सुनना जारी रखें</string>
     <string name="d_custom_module">कस्टम मॉड्यूल</string>
+    <string name="d_discord_presence_off">बंद</string>
     <string name="d_discord_rich_presence_last_fm_and_listenbrainz">Discord रिच प्रेज़ेंस, Last.fm और ListenBrainz</string>
     <string name="d_dont_repeat_songs_in_current_session">इस सत्र में गाने न दोहराएँ</string>
     <string name="d_downloaded_songs_will_appear_here">डाउनलोड किए गए गाने यहाँ दिखेंगे।</string>
@@ -54,6 +55,8 @@
     <string name="d_quit_bitchord">nextrobytemusic से बाहर निकलें</string>
     <string name="d_recently_played_on_this_computer">इस कंप्यूटर पर हाल ही में चलाया गया</string>
     <string name="d_recents">हाल के</string>
+    <string name="d_show_audio_quality">ऑडियो क्वालिटी दिखाएँ</string>
+    <string name="d_show_audio_quality_subtitle">मापा गया कोडेक और बिटरेट, या Hi-Res, लॉसलेस और Dolby जानकारी, कार्ड की तीसरी पंक्ति में</string>
     <string name="d_remove_from_playlist">प्लेलिस्ट से हटाएँ</string>
     <string name="d_repeat">दोहराएँ</string>
     <string name="d_scroll_left">बाएँ स्क्रॉल करें</string>
