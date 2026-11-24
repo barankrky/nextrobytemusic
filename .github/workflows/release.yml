@@ -164,7 +164,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-14
+          # GitHub retired the macos-14 image; macos-15 is its arm64
+          # successor, and macos-15-intel stays the x64 one.
+          - os: macos-15
             arch: arm64
           - os: macos-15-intel
             arch: x64
