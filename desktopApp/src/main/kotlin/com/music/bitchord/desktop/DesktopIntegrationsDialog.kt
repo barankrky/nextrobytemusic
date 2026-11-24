@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.QualityBadgeState
 import com.music.bitchord.ui.icons.NextrobyteIcons
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -54,6 +55,7 @@ import kotlin.math.roundToInt
 internal fun DesktopIntegrationsDialog(
     song: Song?,
     format: DesktopStreamFormat?,
+    quality: QualityBadgeState?,
     spotify: DesktopSpotifyConnection,
     onOpenLastfm: () -> Unit,
     onOpenListenBrainz: () -> Unit,
@@ -75,7 +77,7 @@ internal fun DesktopIntegrationsDialog(
                 modifier = Modifier.padding(start = panelInset(20.dp), end = panelInset(20.dp), top = 18.dp, bottom = 12.dp),
             )
             SpotifySection(spotify)
-            DiscordSection(song, format, onOpenDiscordToken, onChoose = { choosing = it }, onEdit = { editing = it })
+            DiscordSection(song, format, quality, onOpenDiscordToken, onChoose = { choosing = it }, onEdit = { editing = it })
             ScrobblingSection(onOpenLastfm, onOpenListenBrainz)
         }
         DesktopCardRule()
@@ -171,6 +173,7 @@ private fun SpotifySection(spotify: DesktopSpotifyConnection) {
 private fun DiscordSection(
     song: Song?,
     format: DesktopStreamFormat?,
+    quality: QualityBadgeState?,
     onOpenDiscordToken: () -> Unit,
     onChoose: (DiscordChoice) -> Unit,
     onEdit: (DiscordField) -> Unit,
@@ -336,7 +339,7 @@ private fun DiscordSection(
             heading = activityName.ifEmpty { DesktopDiscordSettings.APP_NAME },
             verb = DesktopDiscordSettings.activityVerb(activityType),
             useDetails = useDetails,
-            audioQuality = discordAudioQualityLine(format).takeIf { showAudioQuality },
+            audioQuality = discordAudioQualityLine(format, quality).takeIf { showAudioQuality },
             button1Text = button1Text,
             button1Visible = button1Visible,
             button2Text = button2Text,

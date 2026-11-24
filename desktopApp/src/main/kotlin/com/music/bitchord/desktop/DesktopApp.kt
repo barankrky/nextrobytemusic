@@ -2911,17 +2911,7 @@ fun NextrobyteDesktopApp() {
 
     // The engine's measured stream, as the player's quality badge and stats line read it.
     LaunchedEffect(playback.streamFormat, playback.streamSourceId) {
-        NerdStats.current.value = playback.streamFormat?.let { format ->
-            val codec = format.codec?.substringAfterLast('/')?.substringBefore(';')?.trim()?.lowercase()
-            NerdStats.Snapshot(
-                mimeType = codec?.let { "audio/$it" },
-                bitrateKbps = format.kbps,
-                sampleRateHz = format.sampleRateHz,
-                channels = format.channels,
-                bitDepth = format.bitDepth,
-                sourceName = playback.streamSourceId,
-            )
-        }
+        NerdStats.current.value = playback.streamFormat?.toNerdStats(playback.streamSourceId)
     }
     LaunchedEffect(playback.searchingBetter, selectedSong?.videoId) {
         NerdStats.racingLossless.value = selectedSong?.videoId
@@ -3803,6 +3793,7 @@ fun NextrobyteDesktopApp() {
                                 DesktopSettingsPage.INTEGRATIONS -> DesktopIntegrationsDialog(
                                     song = playback.song,
                                     format = playback.streamFormat,
+                                    quality = desktopQualityBadgeState(playback),
                                     spotify = DesktopSpotifyConnection(
                                         connected = spotifyCanvasCookie.isNotBlank(),
                                         canSignIn = DesktopWebSignIn.available,

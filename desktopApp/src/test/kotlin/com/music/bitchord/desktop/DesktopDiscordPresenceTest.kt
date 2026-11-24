@@ -1,10 +1,14 @@
 package com.music.bitchord.desktop
 
+import com.music.bitchord.data.QualityBadge
+import com.music.bitchord.data.QualityBadgeState
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.settings.AudioQuality
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import java.util.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -14,8 +18,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The desktop Discord card: the defaults a fresh profile gets, the line the
- * audio-quality switch adds, and the rules that decide when Discord is told
+ * The desktop Discord card: the defaults a fresh profile gets, the quality line
+ * the audio-quality switch adds, and the rules that decide when Discord is told
  * anything at all.
  *
  * No socket and no account are involved. The local socket's framing has its own
@@ -23,11 +27,11 @@ import kotlin.test.assertTrue
  * that was never sent because a failed send had already been recorded, and
  * settings that only reached Discord at the next track.
  *
- * The quality words come from the same catalogues the player's badge reads, and
- * the tests take them from those XML files directly instead of switching
- * [DesktopStrings]' language. The language in force belongs to whoever runs the
- * tests; a Turkish profile must not turn an English expectation red, or the
- * other way round.
+ * The labels themselves are the shared player decision. The tests take both
+ * catalogues from their shipped files — the desktop's `strings` XML and the
+ * player's compose-resource `.cvr` in the sharedUi jar — instead of switching
+ * [DesktopStrings]' language, because the language in force belongs to whoever
+ * runs the tests.
  */
 class DesktopDiscordPresenceTest {
 
@@ -41,15 +45,17 @@ class DesktopDiscordPresenceTest {
 
     private fun presence(
         format: DesktopStreamFormat? = null,
+        quality: QualityBadgeState? = null,
         settings: DiscordCardSettings = DiscordCardSettings(),
         nowMs: Long = 1_000_000L,
         song: Song = this.song,
-        label: (DiscordQualityBadge) -> String = catalogue("en"),
+        label: (QualityBadge) -> String = { badge -> qualityBadgeLabel(badge) },
     ) = discordPresence(
         song = song,
         positionMs = 30_000L,
         durationMs = 210_000L,
         format = format,
+        quality = quality,
         speed = 1f,
         settings = settings,
         nowMs = nowMs,
@@ -57,22 +63,95 @@ class DesktopDiscordPresenceTest {
     )
 
     /**
-     * The quality words as one of the shipped catalogues has them.
-     *
-     * Read from the resource rather than through [DesktopStrings.setLanguage]
-     * so a test states the exact text it expects, in the language it names,
-     * without touching the listener's stored choice.
+     * The badge inputs for [format] as the player would see them, with the
+     * desktop's own pinned rung by default.
      */
-    private fun catalogue(tag: String): (DiscordQualityBadge) -> String {
+    private fun qualityFor(
+        format: DesktopStreamFormat?,
+        isLoading: Boolean = false,
+        stillRacing: Boolean = false,
+        losslessRequested: Boolean = true,
+        effectiveQuality: AudioQuality = AudioQuality.LOSSLESS,
+    ) = QualityBadgeState(
+        isLoading = isLoading,
+        stillRacing = stillRacing,
+        losslessRequested = losslessRequested,
+        effectiveQuality = effectiveQuality,
+        nerdStats = format?.toNerdStats(null),
+    )
+
+    /** The card's line with the wording from one desktop catalogue. */
+    private fun lineFor(
+        format: DesktopStreamFormat?,
+        quality: QualityBadgeState?,
+        tag: String,
+    ): String? = discordAudioQualityLine(format, quality) { badge ->
+        qualityBadgeLabel(badge, desktopLabel(tag))
+    }
+
+    /** One desktop catalogue's strings, read from its resource. */
+    private fun desktopStrings(tag: String): Map<String, String> {
         val stream = DesktopStrings::class.java.getResourceAsStream("/strings/$tag.xml")
         assertNotNull(stream, "no catalogue at /strings/$tag.xml")
-        val entries = stream.use { input ->
+        return stream.use { input ->
             Regex("""<string name="([^"]+)">([^<]*)</string>""")
                 .findAll(input.readBytes().decodeToString())
                 .associate { it.groupValues[1] to DesktopStrings.unescape(it.groupValues[2]) }
         }
-        return { badge -> entries[badge.key] ?: error("$tag has no ${badge.key}") }
     }
+
+    private fun desktopLabel(tag: String): (String, String) -> String {
+        val strings = desktopStrings(tag)
+        return { key, fallback -> strings[key] ?: fallback }
+    }
+
+    /**
+     * The player's own catalogue, out of the sharedUi jar.
+     *
+     * Compose packs each language into a `.cvr` file of `string|key|base64`
+     * lines. Reading it here compares the card's words with the words the
+     * player's badge actually resolves, without a Compose environment or the
+     * language in force.
+     */
+    private fun playerStrings(tag: String): Map<String, String> {
+        val folder = if (tag == "en") "values" else "values-$tag"
+        val path = "/composeResources/com.music.bitchord.sharedui.resources/$folder/strings.commonMain.cvr"
+        val stream = DesktopStrings::class.java.getResourceAsStream(path)
+        assertNotNull(stream, "no player catalogue at $path")
+        return stream.use { input ->
+            input.readBytes().decodeToString().lineSequence()
+                .filter { it.startsWith("string|") }
+                .mapNotNull { line ->
+                    val parts = line.split('|', limit = 3)
+                    if (parts.size != 3) {
+                        null
+                    } else {
+                        parts[1] to String(Base64.getDecoder().decode(parts[2]), Charsets.UTF_8)
+                    }
+                }
+                .toMap()
+        }
+    }
+
+    /** The catalogue key the player's badge uses for [badge]. */
+    private fun playerKey(badge: QualityBadge): String = when (badge) {
+        QualityBadge.UPGRADING_HI_QUALITY -> "high_quality_upgrading"
+        QualityBadge.UPGRADING -> "upgrading_quality"
+        QualityBadge.HI_RES_LOSSLESS -> "hi_res_lossless"
+        QualityBadge.LOSSLESS -> "lossless"
+        QualityBadge.DOLBY_ATMOS -> "dolby_atmos"
+        QualityBadge.HIGH_QUALITY -> "high_quality"
+        QualityBadge.DATA_SAVER -> "data_saver"
+        QualityBadge.MEDIUM_QUALITY -> "medium_quality"
+    }
+
+    private val aac320 = DesktopStreamFormat(codec = "aac", kbps = 320, sampleRateHz = 44_100, channels = 2)
+    private val aac160 = DesktopStreamFormat(codec = "aac", kbps = 160, sampleRateHz = 48_000, channels = 2)
+    private val opus160 = DesktopStreamFormat(codec = "opus", kbps = 160, sampleRateHz = 48_000, channels = 2)
+    private val opus64 = DesktopStreamFormat(codec = "opus", kbps = 64, sampleRateHz = 48_000, channels = 2)
+    private val flacHiRes = DesktopStreamFormat(codec = "flac", sampleRateHz = 96_000, bitDepth = 24, channels = 2)
+    private val flacCd = DesktopStreamFormat(codec = "audio/flac", sampleRateHz = 44_100, bitDepth = 16, channels = 2)
+    private val atmos = DesktopStreamFormat(codec = "eac3-joc", kbps = 768, sampleRateHz = 48_000, channels = 6)
 
     // ── Defaults ─────────────────────────────────────────────────────────
 
@@ -91,105 +170,170 @@ class DesktopDiscordPresenceTest {
         assertEquals("nextrobytemusic", DiscordCardSettings().heading)
     }
 
-    // ── The quality line ─────────────────────────────────────────────────
+    // ── One test per player badge state ──────────────────────────────────
 
     @Test
-    fun `the English card is one line with the player badge first`() {
-        val format = DesktopStreamFormat(
-            codec = "flac",
-            sampleRateHz = 48_000,
-            bitDepth = 24,
-            channels = 2,
-        )
-        val line = assertNotNull(discordAudioQualityLine(format, catalogue("en")))
-        assertEquals(
-            "🎧 Hi-Res Lossless · FLAC · 2304 kbps · 24-bit · 48 kHz",
-            line,
-        )
-        assertFalse(line.contains('\n'), "the card's third line is one line")
+    fun `an unmeasured lossless request shows the player's upgrading label`() {
+        val quality = qualityFor(format = null, isLoading = true)
+        assertEquals(QualityBadge.UPGRADING, quality.badge)
+        assertEquals("🎧 Kalite yükseltiliyor", lineFor(null, quality, "tr"))
+        assertEquals("🎧 Upgrading quality", lineFor(null, quality, "en"))
     }
 
     @Test
-    fun `the Turkish card names the quality exactly as the player badge does`() {
-        val format = DesktopStreamFormat(
-            codec = "flac",
-            sampleRateHz = 48_000,
-            bitDepth = 24,
-            channels = 2,
-        )
-        // The track in the report: 2304 kbps is 24-bit * 48 kHz * 2 channels,
-        // even though the channel word itself no longer reaches the card.
-        val line = assertNotNull(discordAudioQualityLine(format, catalogue("tr")))
+    fun `a lossless race over a 320k stream shows high quality upgrading`() {
+        val quality = qualityFor(aac320, stillRacing = true)
+        assertEquals(QualityBadge.UPGRADING_HI_QUALITY, quality.badge)
         assertEquals(
-            "🎧 Hi-Res Kayıpsız · FLAC · 2304 kbps · 24-bit · 48 kHz",
-            line,
+            "🎧 Yüksek kalite, yükseltiliyor · AAC · 320 kbps · 44.1 kHz",
+            lineFor(aac320, quality, "tr"),
         )
-        assertFalse(line.contains('\n'), "the card's third line is one line")
+        assertEquals(
+            "🎧 High quality, upgrading · AAC · 320 kbps · 44.1 kHz",
+            lineFor(aac320, quality, "en"),
+        )
     }
 
     @Test
-    fun `a hi-res card carries only the four measured facts after the badge`() {
-        val format = DesktopStreamFormat(
-            codec = "flac",
-            sampleRateHz = 96_000,
-            bitDepth = 24,
-            channels = 2,
+    fun `hi-res lossless carries the player badge and the measured fields`() {
+        val quality = qualityFor(flacHiRes)
+        assertEquals(QualityBadge.HI_RES_LOSSLESS, quality.badge)
+        assertEquals(
+            "🎧 Hi-Res Kayıpsız · FLAC · 4608 kbps · 24-bit · 96 kHz",
+            lineFor(flacHiRes, quality, "tr"),
         )
-        val card = assertNotNull(discordQualityCard(format, catalogue("en")))
-        assertEquals("🎧 Hi-Res Lossless", card.badge)
-        assertEquals("FLAC · 4608 kbps · 24-bit · 96 kHz", card.specs)
-        assertEquals("🎧 Hi-Res Lossless · FLAC · 4608 kbps · 24-bit · 96 kHz", card.line)
+        assertEquals(
+            "🎧 Hi-Res Lossless · FLAC · 4608 kbps · 24-bit · 96 kHz",
+            lineFor(flacHiRes, quality, "en"),
+        )
     }
 
     @Test
     fun `cd-quality lossless is named Lossless rather than hi-res`() {
-        val format = DesktopStreamFormat(
-            codec = "audio/flac",
-            sampleRateHz = 44_100,
-            bitDepth = 16,
-            channels = 2,
+        val quality = qualityFor(flacCd)
+        assertEquals(QualityBadge.LOSSLESS, quality.badge)
+        assertEquals(
+            "🎧 Kayıpsız · FLAC · 1411 kbps · 16-bit · 44.1 kHz",
+            lineFor(flacCd, quality, "tr"),
         )
         assertEquals(
             "🎧 Lossless · FLAC · 1411 kbps · 16-bit · 44.1 kHz",
-            discordAudioQualityLine(format, catalogue("en")),
-        )
-    }
-
-    @Test
-    fun `an ordinary lossy stream gets its codec and bitrate without a badge`() {
-        val format = DesktopStreamFormat(
-            codec = "opus",
-            kbps = 160,
-            sampleRateHz = 48_000,
-            channels = 2,
-        )
-        // The player's own badge is blank for a 160 kbps Opus, so the card does
-        // not invent one; the measured facts still make the line useful.
-        assertEquals("Opus · 160 kbps · 48 kHz", discordAudioQualityLine(format, catalogue("en")))
-    }
-
-    @Test
-    fun `the top of lossy gets the player's High quality badge`() {
-        val format = DesktopStreamFormat(
-            codec = "aac",
-            kbps = 320,
-            sampleRateHz = 44_100,
-            channels = 2,
-        )
-        assertEquals(
-            "🎧 High quality · AAC · 320 kbps · 44.1 kHz",
-            discordAudioQualityLine(format, catalogue("en")),
+            lineFor(flacCd, quality, "en"),
         )
     }
 
     @Test
     fun `Dolby Atmos is called out as such and not also as lossless`() {
-        val format = DesktopStreamFormat(codec = "eac3-joc", kbps = 768, sampleRateHz = 48_000, channels = 6)
+        val quality = qualityFor(atmos)
+        assertEquals(QualityBadge.DOLBY_ATMOS, quality.badge)
+        assertEquals("🎧 Dolby Atmos · E-AC-3 · 768 kbps · 48 kHz", lineFor(atmos, quality, "tr"))
+        assertEquals("🎧 Dolby Atmos · E-AC-3 · 768 kbps · 48 kHz", lineFor(atmos, quality, "en"))
+    }
+
+    @Test
+    fun `a 320k lossy track shows the player's high quality label`() {
+        val quality = qualityFor(aac320)
+        assertEquals(QualityBadge.HIGH_QUALITY, quality.badge)
+        // The request: whatever the player badge says is what the card says.
         assertEquals(
-            "🎧 Dolby Atmos · E-AC-3 · 768 kbps · 48 kHz",
-            discordAudioQualityLine(format, catalogue("en")),
+            "🎧 Yüksek kalite · AAC · 320 kbps · 44.1 kHz",
+            lineFor(aac320, quality, "tr"),
+        )
+        assertEquals(
+            "🎧 High quality · AAC · 320 kbps · 44.1 kHz",
+            lineFor(aac320, quality, "en"),
         )
     }
+
+    @Test
+    fun `the low rung's Data-Saver label is shown exactly when the player shows it`() {
+        val quality = qualityFor(opus64, effectiveQuality = AudioQuality.LOW)
+        assertEquals(QualityBadge.DATA_SAVER, quality.badge)
+        assertEquals("🎧 Data-Saver · Opus · 64 kbps · 48 kHz", lineFor(opus64, quality, "tr"))
+        assertEquals("🎧 Data-Saver · Opus · 64 kbps · 48 kHz", lineFor(opus64, quality, "en"))
+    }
+
+    @Test
+    fun `the medium rung's Medium Quality label is shown exactly when the player shows it`() {
+        val quality = qualityFor(aac160, effectiveQuality = AudioQuality.MEDIUM)
+        assertEquals(QualityBadge.MEDIUM_QUALITY, quality.badge)
+        assertEquals("🎧 Medium Quality · AAC · 160 kbps · 48 kHz", lineFor(aac160, quality, "tr"))
+        assertEquals("🎧 Medium Quality · AAC · 160 kbps · 48 kHz", lineFor(aac160, quality, "en"))
+    }
+
+    @Test
+    fun `an ordinary lossy stream gets its codec and bitrate without a badge`() {
+        val quality = qualityFor(opus160)
+        // The player's own badge is blank for 160 kbps Opus on the lossless
+        // rung, so the card does not invent one; the measured facts still make
+        // the line useful.
+        assertNull(quality.badge)
+        assertEquals("Opus · 160 kbps · 48 kHz", lineFor(opus160, quality, "tr"))
+        assertEquals("Opus · 160 kbps · 48 kHz", lineFor(opus160, quality, "en"))
+    }
+
+    @Test
+    fun `the card's badge is the player's label for the same decided state`() {
+        val cases = listOf(
+            null to qualityFor(null, isLoading = true),
+            aac320 to qualityFor(aac320, isLoading = true),
+            flacHiRes to qualityFor(flacHiRes),
+            flacCd to qualityFor(flacCd),
+            atmos to qualityFor(atmos),
+            aac320 to qualityFor(aac320),
+            opus64 to qualityFor(opus64, effectiveQuality = AudioQuality.LOW),
+            aac160 to qualityFor(aac160, effectiveQuality = AudioQuality.MEDIUM),
+        )
+        listOf("tr", "en").forEach { tag ->
+            val player = if (tag == "en") playerStrings("en") else playerStrings("en") + playerStrings(tag)
+            val desktop = if (tag == "en") desktopStrings("en") else desktopStrings("en") + desktopStrings(tag)
+            cases.forEach { (format, quality) ->
+                val badge = assertNotNull(quality.badge, "$tag ${quality.effectiveQuality}")
+                // The player's Dolby badge is the one label it still holds as a
+                // literal rather than a catalogue entry.
+                val playerText = if (badge == QualityBadge.DOLBY_ATMOS) {
+                    "Dolby Atmos"
+                } else {
+                    assertNotNull(player[playerKey(badge)], "$tag player has no ${playerKey(badge)}")
+                }
+                val card = assertNotNull(
+                    discordQualityCard(format, quality) { chosen ->
+                        qualityBadgeLabel(chosen) { key, fallback -> desktop[key] ?: fallback }
+                    },
+                )
+                assertEquals(
+                    "🎧 $playerText",
+                    card.badge,
+                    "$tag ${badge.name} must read as the player's badge",
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `the desktop catalogue words every badge exactly as the player's catalogue does`() {
+        val keys = listOf(
+            "high_quality_upgrading",
+            "upgrading_quality",
+            "hi_res_lossless",
+            "lossless",
+            "high_quality",
+            "data_saver",
+            "medium_quality",
+        )
+        listOf("tr", "en").forEach { tag ->
+            val player = if (tag == "en") playerStrings("en") else playerStrings("en") + playerStrings(tag)
+            val desktop = if (tag == "en") desktopStrings("en") else desktopStrings("en") + desktopStrings(tag)
+            keys.forEach { key ->
+                assertEquals(desktop[key], player[key], "$tag/$key differs from the player's word")
+            }
+            // The player's Dolby label is a literal; the desktop has a key that
+            // resolves to the same text everywhere.
+            assertEquals("Dolby Atmos", desktop["dolby_atmos"], "$tag Dolby")
+        }
+    }
+
+    // ── The line's shape ─────────────────────────────────────────────────
 
     @Test
     fun `no channel layout reaches the card, whatever was measured`() {
@@ -202,7 +346,7 @@ class DesktopDiscordPresenceTest {
                 bitDepth = 24,
                 channels = channels,
             )
-            val line = assertNotNull(discordAudioQualityLine(format, catalogue("en")))
+            val line = assertNotNull(lineFor(format, qualityFor(format), "en"))
             assertFalse(
                 Regex("""\b(Stereo|Mono|channels?|ch)\b""").containsMatchIn(line),
                 "$channels channels leaked into '$line'",
@@ -215,19 +359,22 @@ class DesktopDiscordPresenceTest {
         // Bit depth and channel count are unknown, so the computed lossless
         // bitrate is unknown too — only the rate the decoder did report stays.
         val format = DesktopStreamFormat(codec = "flac", sampleRateHz = 48_000)
-        assertEquals("🎧 Lossless · FLAC · 48 kHz", discordAudioQualityLine(format, catalogue("en")))
+        assertEquals(
+            "🎧 Lossless · FLAC · 48 kHz",
+            lineFor(format, qualityFor(format), "en"),
+        )
 
         // The first field unknown as well: the line starts with what is there,
         // not with an empty segment's separator.
         val nameless = DesktopStreamFormat(kbps = 160, sampleRateHz = 44_100)
-        assertEquals("160 kbps · 44.1 kHz", discordAudioQualityLine(nameless, catalogue("en")))
+        assertEquals("160 kbps · 44.1 kHz", lineFor(nameless, qualityFor(nameless), "en"))
     }
 
     @Test
     fun `a format nothing has measured yet earns no line`() {
-        assertNull(discordAudioQualityLine(null, catalogue("en")))
-        assertNull(discordAudioQualityLine(DesktopStreamFormat(), catalogue("en")))
-        assertNull(discordQualityBadge(DesktopStreamFormat()))
+        assertNull(discordAudioQualityLine(null, null))
+        assertNull(discordAudioQualityLine(DesktopStreamFormat(), qualityFor(DesktopStreamFormat())))
+        assertNull(qualityFor(DesktopStreamFormat()).badge)
     }
 
     @Test
@@ -238,21 +385,66 @@ class DesktopDiscordPresenceTest {
             bitDepth = 24,
             channels = 2,
         )
-        val line = assertNotNull(discordAudioQualityLine(format, catalogue("en")))
+        val line = assertNotNull(discordAudioQualityLine(format, qualityFor(format)))
         assertTrue(line.length <= 128, "${line.length} characters")
         assertFalse(line.endsWith(" "), "a truncation that leaves a trailing space reads as a typo")
     }
 
     @Test
+    fun `the card is one line at most`() {
+        listOf(flacHiRes, aac320, atmos).forEach { format ->
+            val line = assertNotNull(lineFor(format, qualityFor(format), "tr"))
+            assertFalse(line.contains('\n'), line)
+        }
+    }
+
+    @Test
     fun `the album keeps the third line until the quality switch is turned on`() {
-        val lossy = DesktopStreamFormat(codec = "aac", kbps = 256, channels = 2)
-        assertEquals("An Album", discordThirdLine(lossy, showQuality = false, album = "An Album"))
+        val quality = qualityFor(aac160.copy(kbps = 256))
         assertEquals(
-            "🎧 High quality · AAC · 256 kbps",
-            discordThirdLine(lossy, showQuality = true, album = "An Album", catalogue("en")),
+            "An Album",
+            discordThirdLine(aac160.copy(kbps = 256), quality, showQuality = false, album = "An Album"),
+        )
+        assertEquals(
+            "🎧 Yüksek kalite · AAC · 256 kbps · 48 kHz",
+            discordThirdLine(
+                aac160.copy(kbps = 256),
+                quality,
+                showQuality = true,
+                album = "An Album",
+                label = { badge -> qualityBadgeLabel(badge, desktopLabel("tr")) },
+            ),
         )
         // Switched on but not measured yet: still the album, never an invented line.
-        assertEquals("An Album", discordThirdLine(null, showQuality = true, album = "An Album", catalogue("en")))
+        assertEquals("An Album", discordThirdLine(null, null, showQuality = true, album = "An Album"))
+    }
+
+    // ── The desktop's own inputs ─────────────────────────────────────────
+
+    @Test
+    fun `the desktop state is the player's own, with the pinned quality flows`() {
+        val state = DesktopPlaybackState(
+            song = song,
+            isPlaying = true,
+            isLoading = true,
+            streamFormat = aac320,
+            searchingBetter = false,
+        )
+        val quality = desktopQualityBadgeState(state)
+        // DesktopPlayerSettings pins both shared quality flows to LOSSLESS, so
+        // the player badge (and therefore the card) always treats a lossless
+        // request as in flight.
+        assertEquals(AudioQuality.LOSSLESS, quality.effectiveQuality)
+        assertTrue(quality.losslessRequested)
+        // Loading with a measurement in hand keeps the measured label; only a
+        // race, or loading before anything is measured, says upgrading.
+        assertEquals(QualityBadge.HIGH_QUALITY, quality.badge)
+        assertEquals("audio/aac", quality.nerdStats?.mimeType)
+        assertEquals(320, quality.nerdStats?.bitrateKbps)
+
+        // searchingBetter is the window's source for NerdStats.racingLossless.
+        val racing = state.copy(isLoading = false, searchingBetter = true)
+        assertEquals(QualityBadge.UPGRADING_HI_QUALITY, desktopQualityBadgeState(racing).badge)
     }
 
     // ── What the local socket is told ────────────────────────────────────
@@ -276,20 +468,25 @@ class DesktopDiscordPresenceTest {
     }
 
     @Test
-    fun `the third line reaches the socket as large text`() {
-        val format = DesktopStreamFormat(
-            codec = "flac",
-            sampleRateHz = 48_000,
-            bitDepth = 24,
-            channels = 2,
-        )
-        val on = presence(format = format, settings = DiscordCardSettings(showAudioQuality = true)).ipcActivity()
+    fun `the high quality line reaches the socket as large text`() {
+        val quality = qualityFor(aac320)
+        val on = presence(
+            format = aac320,
+            quality = quality,
+            settings = DiscordCardSettings(showAudioQuality = true),
+            label = { badge -> qualityBadgeLabel(badge, desktopLabel("tr")) },
+        ).ipcActivity()
         val largeText = on["assets"]?.jsonObject?.get("large_text")?.jsonPrimitive?.content
-        assertEquals("🎧 Hi-Res Lossless · FLAC · 2304 kbps · 24-bit · 48 kHz", largeText)
+        assertEquals("🎧 Yüksek kalite · AAC · 320 kbps · 44.1 kHz", largeText)
         assertFalse(largeText.orEmpty().contains('\n'), "the card's third line is one line")
         assertFalse(largeText.orEmpty().contains("Stereo"), "the channel word stays off the card")
 
-        val off = presence(format = format, settings = DiscordCardSettings(showAudioQuality = false)).ipcActivity()
+        val off = presence(
+            format = aac320,
+            quality = quality,
+            settings = DiscordCardSettings(showAudioQuality = false),
+            label = { badge -> qualityBadgeLabel(badge, desktopLabel("tr")) },
+        ).ipcActivity()
         assertEquals(
             "An Album",
             off["assets"]?.jsonObject?.get("large_text")?.jsonPrimitive?.content,
@@ -297,21 +494,28 @@ class DesktopDiscordPresenceTest {
     }
 
     @Test
-    fun `the same Turkish line the player badge shows is what the socket receives`() {
-        val format = DesktopStreamFormat(
-            codec = "flac",
-            sampleRateHz = 48_000,
-            bitDepth = 24,
-            channels = 2,
-        )
-        val activity = presence(
-            format = format,
+    fun `the hi-res line reaches the socket in the language of the catalogue`() {
+        val quality = qualityFor(flacHiRes)
+        val english = presence(
+            format = flacHiRes,
+            quality = quality,
             settings = DiscordCardSettings(showAudioQuality = true),
-            label = catalogue("tr"),
+            label = { badge -> qualityBadgeLabel(badge, desktopLabel("en")) },
         ).ipcActivity()
         assertEquals(
-            "🎧 Hi-Res Kayıpsız · FLAC · 2304 kbps · 24-bit · 48 kHz",
-            activity["assets"]?.jsonObject?.get("large_text")?.jsonPrimitive?.content,
+            "🎧 Hi-Res Lossless · FLAC · 4608 kbps · 24-bit · 96 kHz",
+            english["assets"]?.jsonObject?.get("large_text")?.jsonPrimitive?.content,
+        )
+
+        val turkish = presence(
+            format = flacHiRes,
+            quality = quality,
+            settings = DiscordCardSettings(showAudioQuality = true),
+            label = { badge -> qualityBadgeLabel(badge, desktopLabel("tr")) },
+        ).ipcActivity()
+        assertEquals(
+            "🎧 Hi-Res Kayıpsız · FLAC · 4608 kbps · 24-bit · 96 kHz",
+            turkish["assets"]?.jsonObject?.get("large_text")?.jsonPrimitive?.content,
         )
     }
 
@@ -340,20 +544,20 @@ class DesktopDiscordPresenceTest {
 
     @Test
     fun `a new measured format changes the key only while the quality line is on`() {
-        val lossy = DesktopStreamFormat(codec = "opus", kbps = 160, channels = 2)
-        val lossless = DesktopStreamFormat(codec = "flac", sampleRateHz = 44_100, bitDepth = 16, channels = 2)
+        val lossyQuality = qualityFor(opus160)
+        val losslessQuality = qualityFor(flacCd)
 
         val off = DiscordCardSettings(showAudioQuality = false)
         assertEquals(
-            presence(format = lossy, settings = off).key,
-            presence(format = lossless, settings = off).key,
+            presence(format = opus160, quality = lossyQuality, settings = off).key,
+            presence(format = flacCd, quality = losslessQuality, settings = off).key,
             "the album is the third line, so a format that arrives changes nothing Discord draws",
         )
 
         val on = DiscordCardSettings(showAudioQuality = true)
         assertNotEquals(
-            presence(format = lossy, settings = on).key,
-            presence(format = lossless, settings = on).key,
+            presence(format = opus160, quality = lossyQuality, settings = on).key,
+            presence(format = flacCd, quality = losslessQuality, settings = on).key,
         )
     }
 
@@ -365,6 +569,7 @@ class DesktopDiscordPresenceTest {
             positionMs = 30_000L,
             durationMs = 210_000L,
             format = null,
+            quality = null,
             speed = 1.5f,
             settings = DiscordCardSettings(),
             nowMs = now,

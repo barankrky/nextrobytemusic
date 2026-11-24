@@ -2,6 +2,8 @@ package com.music.bitchord.desktop
 
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.artworkAt
+import com.music.bitchord.data.QualityBadge
+import com.music.bitchord.data.QualityBadgeState
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
@@ -113,10 +115,11 @@ internal fun discordPresence(
     positionMs: Long,
     durationMs: Long,
     format: DesktopStreamFormat?,
+    quality: QualityBadgeState?,
     speed: Float,
     settings: DiscordCardSettings,
     nowMs: Long,
-    label: (DiscordQualityBadge) -> String = { it.label },
+    label: (QualityBadge) -> String = { badge -> qualityBadgeLabel(badge) },
 ): DiscordPresence {
     val rate = speed.takeIf { it > 0f } ?: 1f
     val elapsed = (positionMs.coerceAtLeast(0L) / rate).toLong()
@@ -126,7 +129,7 @@ internal fun discordPresence(
     } else {
         song.title
     }
-    val thirdLine = discordThirdLine(format, settings.showAudioQuality, song.albumName, label)
+    val thirdLine = discordThirdLine(format, quality, settings.showAudioQuality, song.albumName, label)
     val artwork = song.artworkAt(ART_PX)?.takeIf { it.startsWith("http") } ?: FALLBACK_ART_URL
     val watch = "https://music.youtube.com/watch?v=${song.videoId}"
     val buttons = buildList<Pair<String, String>> {
@@ -231,7 +234,16 @@ internal fun discordPresenceAction(
     val song = state?.song
     if (state == null || song == null || !state.isPlaying) return DiscordPresenceAction.Clear
     return DiscordPresenceAction.Show(
-        discordPresence(song, state.positionMs, state.durationMs, state.streamFormat, speed, settings, nowMs),
+        discordPresence(
+            song = song,
+            positionMs = state.positionMs,
+            durationMs = state.durationMs,
+            format = state.streamFormat,
+            quality = desktopQualityBadgeState(state),
+            speed = speed,
+            settings = settings,
+            nowMs = nowMs,
+        ),
     )
 }
 

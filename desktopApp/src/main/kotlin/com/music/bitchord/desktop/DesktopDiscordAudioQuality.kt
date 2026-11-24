@@ -1,6 +1,8 @@
 package com.music.bitchord.desktop
 
 import com.music.bitchord.data.NerdStats
+import com.music.bitchord.data.QualityBadge
+import com.music.bitchord.data.QualityBadgeState
 import java.util.Locale
 
 /**
@@ -8,9 +10,15 @@ import java.util.Locale
  *
  * The card has one line under the artist — Discord draws `assets.large_text`
  * there, after `details` and `state` — so the wording is a single line: a
- * headphone glyph and the player's own localized quality badge, then the
- * technical fields the decoder measured, separated by the same middle dot the
- * rest of the card uses.
+ * headphone glyph and the player's own quality badge, then the technical
+ * fields the decoder measured, separated by the same middle dot the rest of the
+ * card uses.
+ *
+ * The badge is not classified here. [QualityBadgeState.badge] in `:shared`
+ * makes the one decision the player's badge under the seek bar also makes, from
+ * the same measured state; this file only resolves that decision to the
+ * catalogue's wording and joins it to the specs. That is what makes
+ * "Yüksek kalite" on the card mean exactly the "Yüksek kalite" on the player.
  *
  * Channel layout is deliberately left out here even though the player's own
  * format summary keeps it. The card names the four facts the listener asked
@@ -46,49 +54,14 @@ internal data class DiscordQualityCard(
 }
 
 /**
- * Which of the player's badges applies, from what the decoder measured.
+ * The card's quality wording as its two parts, or null when neither the player
+ * has a badge to show nor the decoder has measured a field.
  *
- * The three lossless labels are the ones the player draws from
- * `NerdStats.Snapshot` (see `LosslessOrStats`), and the wording is resolved
- * through [DesktopStrings] so the card says "Hi-Res Kayıpsız" in Turkish
- * exactly as the badge under the seek bar does.
- *
- * Low, medium and Data-Saver are not inferred here. The player shows those
- * only when the connection's own quality setting asks for that tier, which
- * this value cannot see; calling a 64 kbps stream Data-Saver on the card while
- * the player shows nothing would be a guess, not a mirror. A measured lossy
- * stream that is not at the top of lossy still gets its codec and bitrate in
- * the line, just without a tier word.
- */
-internal enum class DiscordQualityBadge(internal val key: String, private val english: String) {
-    HI_RES_LOSSLESS("hi_res_lossless", "Hi-Res Lossless"),
-    LOSSLESS("lossless", "Lossless"),
-    DOLBY_ATMOS("dolby_atmos", "Dolby Atmos"),
-    HIGH_QUALITY("high_quality", "High quality"),
-    ;
-
-    /** The same label, in the app's current language, as the player draws it. */
-    val label: String
-        get() = DesktopStrings[key, english]
-}
-
-/** The badge for [format], or null when the player would draw none. */
-internal fun discordQualityBadge(format: DesktopStreamFormat?): DiscordQualityBadge? = when {
-    format == null -> null
-    // E-AC-3 JOC is its own measurement, never a bit-exact rendition. The
-    // lossless check below cannot currently claim it, but checking Dolby first
-    // keeps that true if the lossless codec set ever grows.
-    format.isDolbyAtmos -> DiscordQualityBadge.DOLBY_ATMOS
-    format.isHiRes -> DiscordQualityBadge.HI_RES_LOSSLESS
-    format.isLossless -> DiscordQualityBadge.LOSSLESS
-    format.isHiQuality -> DiscordQualityBadge.HIGH_QUALITY
-    else -> null
-}
-
-/**
- * The card's quality wording as its two parts, or null when nothing measurable
- * is known. The badge mirrors the player's; the specs always name whichever of
- * codec, bitrate, bit depth and sample rate the decoder actually reported.
+ * The badge comes from [quality] and nowhere else: this function does not look
+ * at the codec to decide what the player would call it. The specs always name
+ * whichever of codec, bitrate, bit depth and sample rate [format] actually
+ * reported, so a state that is still upgrading can still carry what has already
+ * been measured.
  *
  * [label] is the wording source. It defaults to the catalogue in force — the
  * card follows the app's language — and is a parameter so the wording can be
@@ -97,17 +70,18 @@ internal fun discordQualityBadge(format: DesktopStreamFormat?): DiscordQualityBa
  */
 internal fun discordQualityCard(
     format: DesktopStreamFormat?,
-    label: (DiscordQualityBadge) -> String = { it.label },
+    quality: QualityBadgeState?,
+    label: (QualityBadge) -> String = { badge -> qualityBadgeLabel(badge) },
 ): DiscordQualityCard? {
-    format ?: return null
-
-    val badge = discordQualityBadge(format)?.let { "🎧 ${label(it)}" }
-    val specs = buildList {
-        format.codecLabel?.let(::add)
-        format.statedKbps?.takeIf { it > 0 }?.let { add("$it kbps") }
-        format.bitDepth?.takeIf { it > 0 }?.let { add("$it-bit") }
-        format.sampleRateHz?.takeIf { it > 0 }?.let { add(sampleRateLabel(it)) }
-    }.joinToString(" · ").ifBlank { null }
+    val badge = quality?.badge?.let { "🎧 ${label(it)}" }
+    val specs = format?.let { measured ->
+        buildList {
+            measured.codecLabel?.let(::add)
+            measured.statedKbps?.takeIf { it > 0 }?.let { add("$it kbps") }
+            measured.bitDepth?.takeIf { it > 0 }?.let { add("$it-bit") }
+            measured.sampleRateHz?.takeIf { it > 0 }?.let { add(sampleRateLabel(it)) }
+        }.joinToString(" · ").ifBlank { null }
+    }
 
     // No badge and no measured field: the decoder has not said anything worth
     // putting on the card yet, and an empty or invented line would be worse
@@ -120,19 +94,21 @@ internal fun discordQualityCard(
 /** The one line sent as `assets.large_text`, or null when there is nothing to say. */
 internal fun discordAudioQualityLine(
     format: DesktopStreamFormat?,
-    label: (DiscordQualityBadge) -> String = { it.label },
-): String? = discordQualityCard(format, label)?.line
+    quality: QualityBadgeState?,
+    label: (QualityBadge) -> String = { badge -> qualityBadgeLabel(badge) },
+): String? = discordQualityCard(format, quality, label)?.line
 
 /**
  * The card's third information line: the measured quality while its switch is
- * on and the decoder has something to say, the album otherwise.
+ * on and the player has something to say, the album otherwise.
  */
 internal fun discordThirdLine(
     format: DesktopStreamFormat?,
+    quality: QualityBadgeState?,
     showQuality: Boolean,
     album: String?,
-    label: (DiscordQualityBadge) -> String = { it.label },
-): String? = discordAudioQualityLine(format, label).takeIf { showQuality } ?: album
+    label: (QualityBadge) -> String = { badge -> qualityBadgeLabel(badge) },
+): String? = discordAudioQualityLine(format, quality, label).takeIf { showQuality } ?: album
 
 /** DSD rates are named in MHz; everything else reads better in kHz. */
 private fun sampleRateLabel(hz: Int): String =
