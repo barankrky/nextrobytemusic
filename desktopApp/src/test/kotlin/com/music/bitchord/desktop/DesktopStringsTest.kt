@@ -68,14 +68,45 @@ class DesktopStringsTest {
 
     @Test
     fun `a key that exists comes back from the catalogue rather than the fallback`() {
-        // The fallback is deliberately wrong, so a pass proves the catalogue was read.
-        assertEquals("Settings", DesktopStrings["settings", "WRONG"])
+        // The fallback is deliberately wrong, so a pass proves the catalogue was read. English is
+        // forced because the stored language on a developer machine is whatever they chose, and
+        // this test is about the lookup path, not about which translation won.
+        val before = DesktopStrings.language.value
+        try {
+            DesktopStrings.setLanguage("en")
+            assertEquals("Settings", DesktopStrings["settings", "WRONG"])
+        } finally {
+            DesktopStrings.setLanguage(before)
+        }
     }
 
     @Test
     fun `the system default resolves to a language there is a catalogue for`() {
         val tag = DesktopStrings.resolvedTag()
         assertTrue(DesktopStrings.available.any { it.tag == tag }, "unknown tag $tag")
+    }
+
+    @Test
+    fun `a stored tag resolves to the catalogue this build ships`() {
+        // The picker writes bare tags, but older builds and hand-edited preferences left region
+        // tags, upper case, and the legacy bare "zh" behind. Each still has to name a file that
+        // exists, because the loader builds the file name out of this result.
+        assertEquals("tr", DesktopStrings.resolveTag("tr", "en-US"))
+        assertEquals("tr", DesktopStrings.resolveTag("TR", "en-US"))
+        assertEquals("tr", DesktopStrings.resolveTag("tr-TR", "en-US"))
+        assertEquals("zh-Hant", DesktopStrings.resolveTag("zh-TW", "en-US"))
+        assertEquals("zh-Hans", DesktopStrings.resolveTag("zh", "en-US"))
+        assertEquals("tr", DesktopStrings.resolveTag("", "tr-TR"))
+        assertEquals("en", DesktopStrings.resolveTag("", "en-US"))
+    }
+
+    @Test
+    fun `a stored tag with no catalogue falls back to English, not to an empty catalogue`() {
+        // "xx" has no file; "!!" cannot even be parsed by Locale.forLanguageTag. Both must leave
+        // the UI in one complete language rather than mixed English and leftover keys.
+        assertEquals("en", DesktopStrings.resolveTag("xx", "tr-TR"))
+        assertEquals("en", DesktopStrings.resolveTag("!!", "tr-TR"))
+        assertEquals("en", DesktopStrings.resolveTag("xx-YY", "tr-TR"))
     }
 
     @Test

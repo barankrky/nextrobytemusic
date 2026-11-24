@@ -17,6 +17,20 @@ import javax.xml.parsers.DocumentBuilderFactory
  */
 object DesktopStrings {
 
+    /**
+     * How a `\uXXXX` escape in a catalogue is read back.
+     *
+     * Declared above everything that can load a catalogue, and not at the bottom where it used to
+     * sit. Kotlin initializes an object's properties top to bottom, so while the first catalogue
+     * was loaded from an `init` block that ran before this field existed, every call to `load`
+     * threw a null-pointer error inside its `runCatching`, came back as an empty map, and the
+     * whole first window fell through to the English catalogues. The picker's `setLanguage`
+     * reloaded the catalogue later, once this field existed, which is why switching English →
+     * Turkish "fixed" the language until the next launch. Anything the loader touches has to be
+     * initialized before the loader's first use.
+     */
+    private val UNICODE_ESCAPE = Regex("""\\u([0-9a-fA-F]{4})""")
+
     /** The languages there are catalogues for, by IETF tag. */
     val available: List<DesktopLanguage> = listOf(
         DesktopLanguage("", "System default"),
@@ -39,31 +53,53 @@ object DesktopStrings {
 
     private val english: Map<String, String> by lazy { catalogue("en") }
 
-    @Volatile
-    private var current: Map<String, String> = emptyMap()
-
     private val _language = MutableStateFlow(DesktopPersistence().string(KEY_LANGUAGE))
 
     /** The stored choice: a tag, or blank for the system's own language. */
     val language: StateFlow<String> = _language
 
-    init {
-        current = catalogue(resolvedTag())
-    }
+    /**
+     * The strings in force, loaded while this object is created and replaced by [setLanguage].
+     *
+     * A property initializer rather than an `init` block, so the map the first composition reads
+     * is assigned in the same declaration order that initializes [available] and [_language]
+     * above it. An initializer that runs before its own dependencies is how the first frame came
+     * out English while the settings screen said the chosen language was Turkish.
+     */
+    @Volatile
+    private var current: Map<String, String> = catalogue(resolvedTag())
 
     /** Which catalogue is actually in use, after the system default is resolved. */
-    fun resolvedTag(): String {
-        val chosen = _language.value
-        // Migrate legacy single "zh" (Simplified) to explicit script tag.
-        if (chosen.isNotBlank()) {
-            if (chosen == "zh") return "zh-Hans"
-            if (available.any { it.tag.equals(chosen, ignoreCase = true) }) return chosen
-            return com.music.bitchord.data.LocaleTags.normalizeAppTag(chosen)
-        }
-        val system = com.music.bitchord.data.LocaleTags.normalizeAppTag(
-            Locale.getDefault().toLanguageTag(),
-        )
-        return if (available.any { it.tag.equals(system, ignoreCase = true) }) system else "en"
+    fun resolvedTag(): String = resolveTag(_language.value, Locale.getDefault().toLanguageTag())
+
+    /**
+     * [chosen] as the tag of a catalogue this build ships, with [systemTag] answering a blank
+     * choice.
+     *
+     * The stored value is only a hint until a catalogue exists for it. It can arrive as "tr",
+     * "TR", "tr-TR", "zh-TW", a legacy bare "zh", or a language a later build dropped, and the
+     * file name must not be built out of whichever case or region happened to be stored:
+     * `catalogue("TR")` would look for `TR.xml`, find nothing, and leave the UI in English. Each
+     * value resolves to the catalogue's own spelling, and one with no catalogue lands on English
+     * — a complete language rather than keys from whichever catalogues did load.
+     */
+    internal fun resolveTag(chosen: String, systemTag: String): String {
+        // `Locale.forLanguageTag` throws on a malformed tag ("!!", "en-"), and a stored value is
+        // whatever a previous build or a hand-edited preference left there. A value this code
+        // cannot parse is a value there is no catalogue for, so it takes the same English
+        // fallback rather than failing the object that the first composition is waiting on.
+        val normalized = runCatching {
+            when {
+                chosen.isBlank() -> com.music.bitchord.data.LocaleTags.normalizeAppTag(systemTag)
+                chosen.trim().equals("zh", ignoreCase = true) ->
+                    com.music.bitchord.data.LocaleTags.ZH_HANS
+                else -> com.music.bitchord.data.LocaleTags.normalizeAppTag(chosen)
+            }
+        }.getOrDefault("en")
+        return available
+            .firstOrNull { it.tag.isNotBlank() && it.tag.equals(normalized, ignoreCase = true) }
+            ?.tag
+            ?: "en"
     }
 
     /**
@@ -92,9 +128,17 @@ object DesktopStrings {
         current = catalogue(resolvedTag())
     }
 
-    /** The label shown for the stored choice. */
-    fun languageLabel(): String =
-        available.firstOrNull { it.tag == _language.value }?.label ?: "System default"
+    /**
+     * The label shown for the stored choice, named by the catalogue actually in force.
+     *
+     * A blank choice is the picker's "System default". A stored tag this build has no catalogue
+     * for is labelled as the language the UI really runs in (English), rather than as "System
+     * default", which would claim a setting that is not in effect.
+     */
+    fun languageLabel(): String {
+        if (_language.value.isBlank()) return "System default"
+        return available.firstOrNull { it.tag == resolvedTag() }?.label ?: "English"
+    }
 
     /**
      * The string for [key], or [fallback] when no catalogue has one.
@@ -139,8 +183,6 @@ object DesktopStrings {
         val decoded = UNICODE_ESCAPE.replace(raw) { it.groupValues[1].toInt(16).toChar().toString() }
         return decoded.replace("\\'", "'").replace("\\\"", "\"").replace("\\n", "\n")
     }
-
-    private val UNICODE_ESCAPE = Regex("""\\u([0-9a-fA-F]{4})""")
 
     internal const val KEY_LANGUAGE = "app_language"
 }
