@@ -116,6 +116,7 @@ internal fun discordPresence(
     speed: Float,
     settings: DiscordCardSettings,
     nowMs: Long,
+    label: (DiscordQualityBadge) -> String = { it.label },
 ): DiscordPresence {
     val rate = speed.takeIf { it > 0f } ?: 1f
     val elapsed = (positionMs.coerceAtLeast(0L) / rate).toLong()
@@ -125,7 +126,7 @@ internal fun discordPresence(
     } else {
         song.title
     }
-    val thirdLine = discordThirdLine(format, settings.showAudioQuality, song.albumName)
+    val thirdLine = discordThirdLine(format, settings.showAudioQuality, song.albumName, label)
     val artwork = song.artworkAt(ART_PX)?.takeIf { it.startsWith("http") } ?: FALLBACK_ART_URL
     val watch = "https://music.youtube.com/watch?v=${song.videoId}"
     val buttons = buildList<Pair<String, String>> {

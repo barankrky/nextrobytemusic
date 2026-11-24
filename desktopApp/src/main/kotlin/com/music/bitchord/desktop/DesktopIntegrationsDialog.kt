@@ -528,14 +528,16 @@ private fun RichPresencePreview(
                 )
                 // The third line is the measured quality while its switch is
                 // on, and the album otherwise — the same slot the presence
-                // itself fills.
+                // itself fills. The quality line is longer than the card is
+                // wide, so the preview lets it wrap rather than cutting it
+                // off; the album keeps its single ellipsized line as before.
                 (audioQuality ?: song?.albumName)?.let {
                     Text(
                         it,
                         style = MaterialTheme.typography.bodySmall,
                         color = DesktopSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        maxLines = if (audioQuality == null) 1 else Int.MAX_VALUE,
+                        overflow = if (audioQuality == null) TextOverflow.Ellipsis else TextOverflow.Clip,
                     )
                 }
             }
